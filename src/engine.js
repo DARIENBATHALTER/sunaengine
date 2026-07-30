@@ -82,11 +82,11 @@ export class SunaEngine {
     device.queue.writeBuffer(this.buf.luts, 0, new Int32Array(lutImg));
 
     // Create pipelines
-    const mkPipe = (entry, wgs) =>
+    const mkPipe = (entry) =>
       device.createComputePipeline({
         layout: 'auto',
         label: entry,
-        compute: { module, entryPoint: entry, ...(wgs != null ? { constants: { wgs } } : {}) },
+        compute: { module, entryPoint: entry },
       });
 
     this.pipe = {
