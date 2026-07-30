@@ -76,6 +76,7 @@ export class SunaEngine {
       luts:      mkBuf(lutImg.length * 4, ST, 'luts'),
       params:    mkBuf(48, UNI, 'params'),
       readback:  mkBuf(n * PARTICLE_WORDS * 4, GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ, 'readback'),
+      pushReadback: mkBuf(n * PARTICLE_WORDS * 4, GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ, 'pushReadback'),
     };
 
     // Write LUTs
@@ -395,6 +396,44 @@ export class SunaEngine {
 
     this._lastState = state;
     return state;
+  }
+
+  /**
+   * Apply an impulse to particles near (cx, cy).
+   */
+  async pushParticles(cx, cy, radius, fx, fy) {
+    if (!this._ready) return;
+    const n = this._n;
+    const stateSize = n * PARTICLE_WORDS * 4;
+    if (stateSize === 0) return;
+
+    const enc = this._device.createCommandEncoder();
+    enc.copyBufferToBuffer(this.buf.stateA, 0, this.buf.pushReadback, 0, stateSize);
+    this._device.queue.submit([enc.finish()]);
+
+    await this.buf.pushReadback.mapAsync(GPUMapMode.READ);
+    const raw = new Int32Array(this.buf.pushReadback.getMappedRange().slice(0));
+    const state = new Int32Array(raw);
+    this.buf.pushReadback.unmap();
+
+    const cxT = Math.round(cx * ONE);
+    const cyT = Math.round(cy * ONE);
+    const rT = Math.round(radius * ONE);
+    const r2T = rT * rT;
+
+    for (let i = 0; i < n; i++) {
+      const b = i * PARTICLE_WORDS;
+      const px = state[b];
+      const py = state[b + 1];
+      const dx = px - cxT;
+      const dy = py - cyT;
+      if (dx * dx + dy * dy > r2T) continue;
+      state[b + 2] = Math.max(-VMAX, Math.min(VMAX, state[b + 2] + fx));
+      state[b + 3] = Math.max(-VMAX, Math.min(VMAX, state[b + 3] + fy));
+    }
+
+    this._device.queue.writeBuffer(this.buf.stateA, 0, state, 0, stateSize);
+    this._device.queue.writeBuffer(this.buf.stateB, 0, state, 0, stateSize);
   }
 
   getHash() {

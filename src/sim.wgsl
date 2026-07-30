@@ -217,8 +217,10 @@ fn gridSort(@builtin(global_invocation_id) gid : vec3<u32>) {
 
 @compute @workgroup_size(256)
 fn buildNbr(@builtin(global_invocation_id) gid : vec3<u32>) {
-  let i = gid.x;
-  if (i >= P.nFluid) { return; }
+  let wallCount = P.n - P.nFluid;
+  let fi = gid.x;
+  if (fi >= P.nFluid) { return; }
+  let i = wallCount + fi;
   var pi = state_in[i].pos;
   let ci = cell_coord(pi);
   var nn: u32 = 0u;
@@ -236,22 +238,28 @@ fn buildNbr(@builtin(global_invocation_id) gid : vec3<u32>) {
         let d = vec2<i32>(fp_sub_sat(pi.x, state_in[j].pos.x), fp_sub_sat(pi.y, state_in[j].pos.y));
         let li = lut_index(d);
         if (li < 0 || nn >= MAXNBR) { continue; }
-        nbr[i * P.maxNbr + nn] = j;
+        nbr[fi * P.maxNbr + nn] = j;
         nn = nn + 1u;
       }
     }
   }
-  nbrN[i] = nn;
+  nbrN[fi] = nn;
 }
 
 // ---------------------------------- PREDICT ---------------------------------
 @compute @workgroup_size(256)
 fn predict(@builtin(global_invocation_id) gid : vec3<u32>) {
   let i = gid.x;
-  if (i >= P.nFluid) { return; }
+  let wallCount = P.n - P.nFluid;
+  if (i < wallCount) {
+    derived[i].pred = state_in[i].pos;
+    derived[i].vtmp = vec2<i32>(0, 0);
+    return;
+  }
+  if (i >= wallCount + P.nFluid) { return; }
   let s = state_in[i];
-  let grav_vx = fp_add_sat(s.vel.x, W_GRAV);
-  let grav_vy = fp_add_sat(s.vel.y, W_GRAV);
+  let grav_vx = s.vel.x;
+  let grav_vy = fp_add_sat(s.vel.y, -W_GRAV);
   let px = fp_add_sat(s.pos.x, grav_vx);
   let py = fp_add_sat(s.pos.y, grav_vy);
   derived[i].pred = wall_clamp(vec2<i32>(px, py));
@@ -261,15 +269,17 @@ fn predict(@builtin(global_invocation_id) gid : vec3<u32>) {
 // ---------------------------------- SOLVE A ---------------------------------
 @compute @workgroup_size(256)
 fn solveA(@builtin(global_invocation_id) gid : vec3<u32>) {
-  let i = gid.x;
-  if (i >= P.nFluid) { return; }
+  let wallCount = P.n - P.nFluid;
+  let fi = gid.x;
+  if (fi >= P.nFluid) { return; }
+  let i = wallCount + fi;
   let pi = derived[i].pred;
   var rho: i32 = luts[OFF_W];
-  let nn = nbrN[i];
+  let nn = nbrN[fi];
 
   for (var k: u32 = 0u; k < nn; k = k + 1u) {
-    let j = nbr[i * P.maxNbr + k];
-    let pj = derived[j].pred;
+    let j = nbr[fi * P.maxNbr + k];
+    let pj = select(state_in[j].pos, derived[j].pred, j >= wallCount);
     let d = vec2<i32>(fp_sub_sat(pi.x, pj.x), fp_sub_sat(pi.y, pj.y));
     let li = lut_index(d);
     if (li < 0) { continue; }
@@ -287,17 +297,19 @@ fn solveA(@builtin(global_invocation_id) gid : vec3<u32>) {
 // ---------------------------------- SOLVE B ---------------------------------
 @compute @workgroup_size(256)
 fn solveB(@builtin(global_invocation_id) gid : vec3<u32>) {
-  let i = gid.x;
-  if (i >= P.nFluid) { return; }
+  let wallCount = P.n - P.nFluid;
+  let fi = gid.x;
+  if (fi >= P.nFluid) { return; }
+  let i = wallCount + fi;
   let lam_i = derived[i].lam;
   let pi = derived[i].pred;
   let rhoi = derived[i].rho;
   var dpx: i32 = 0; var dpy: i32 = 0;
-  let nn = nbrN[i];
+  let nn = nbrN[fi];
 
   for (var k: u32 = 0u; k < nn; k = k + 1u) {
-    let j = nbr[i * P.maxNbr + k];
-    let pj = derived[j].pred;
+    let j = nbr[fi * P.maxNbr + k];
+    let pj = select(state_in[j].pos, derived[j].pred, j >= wallCount);
     let d = vec2<i32>(fp_sub_sat(pi.x, pj.x), fp_sub_sat(pi.y, pj.y));
     let li = lut_index(d);
     if (li < 0) { continue; }
@@ -330,8 +342,10 @@ fn solveB(@builtin(global_invocation_id) gid : vec3<u32>) {
 // ---------------------------------- APPLY DP -------------------------------
 @compute @workgroup_size(256)
 fn applyDp(@builtin(global_invocation_id) gid : vec3<u32>) {
-  let i = gid.x;
-  if (i >= P.nFluid) { return; }
+  let wallCount = P.n - P.nFluid;
+  let fi = gid.x;
+  if (fi >= P.nFluid) { return; }
+  let i = wallCount + fi;
   let dp = derived[i].dp;
   var px = fp_add_sat(derived[i].pred.x, dp.x);
   var py = fp_add_sat(derived[i].pred.y, dp.y);
@@ -342,16 +356,18 @@ fn applyDp(@builtin(global_invocation_id) gid : vec3<u32>) {
 // ---------------------------------- FINALIZE -------------------------------
 @compute @workgroup_size(256)
 fn finalize(@builtin(global_invocation_id) gid : vec3<u32>) {
-  let i = gid.x;
-  if (i >= P.nFluid) { return; }
+  let wallCount = P.n - P.nFluid;
+  let fi = gid.x;
+  if (fi >= P.nFluid) { return; }
+  let i = wallCount + fi;
   let pred = derived[i].pred;
   let old  = state_in[i].pos;
   var vel  = vec2<i32>(fp_sub_sat(pred.x, old.x), fp_sub_sat(pred.y, old.y));
 
-  let nn = nbrN[i];
+  let nn = nbrN[fi];
   var dvx: i32 = 0; var dvy: i32 = 0;
   for (var k: u32 = 0u; k < nn; k = k + 1u) {
-    let j = nbr[i * P.maxNbr + k];
+    let j = nbr[fi * P.maxNbr + k];
     let d = vec2<i32>(fp_sub_sat(pred.x, derived[j].pred.x), fp_sub_sat(pred.y, derived[j].pred.y));
     let li = lut_index(d);
     if (li < 0) { continue; }
@@ -378,6 +394,7 @@ fn finalize(@builtin(global_invocation_id) gid : vec3<u32>) {
 @compute @workgroup_size(256)
 fn copyBoundary(@builtin(global_invocation_id) gid : vec3<u32>) {
   let i = gid.x;
-  if (i < P.nFluid || i >= P.n) { return; }
+  let wallCount = P.n - P.nFluid;
+  if (i >= P.n || i >= wallCount) { return; }
   state_out[i] = state_in[i];
 }

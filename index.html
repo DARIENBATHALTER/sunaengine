@@ -245,7 +245,7 @@
 <section class="demo-section">
   <h2>Demo 2 — Push &amp; Rewind</h2>
   <p class="subtitle">
-    Push water around with your mouse. Use the slider to scrub backward and forward 
+    Drag through the water to push it around. Use the slider to scrub backward and forward 
     through the simulation. Every frame is <strong>deterministic</strong> — the same 
     inputs always produce the exact same result.
   </p>
@@ -432,6 +432,7 @@ let d2Replaying = false;
 let d2ReplayIdx = 0;
 let d2MouseDown = false;
 let d2MouseX = 0, d2MouseY = 0;
+let d2LastMouseX = 0, d2LastMouseY = 0;
 
 async function d2Init() {
   await d2.init();
@@ -470,18 +471,19 @@ async function d2Loop() {
     return;
   }
 
-  // Push effect: if mouse is down, apply a push force to nearby particles
-  if (d2MouseDown && d2.frame % 6 === 0) {
-    // Throttled push: spawn near cursor every ~6 frames (~10 Hz)
+  // Push effect: if mouse is down, apply a push impulse to nearby particles
+  if (d2MouseDown && d2.frame % 3 === 0) {
     const rect = d2canvas.getBoundingClientRect();
     const scaleW = 96 / rect.width;
     const scaleH = 54 / rect.height;
     const wx = (d2MouseX - rect.left) * scaleW;
     const wy = 54 - (d2MouseY - rect.top) * scaleH;
-    if (d2.n < d2.maxParticles - 20) {
-      d2.spawn(wx, wy, 1.2);
-    }
+    const dx = (d2MouseX - d2LastMouseX) * scaleW * ONE * 0.05;
+    const dy = -(d2MouseY - d2LastMouseY) * scaleH * ONE * 0.05;
+    d2.pushParticles(wx, wy, 6, dx, dy);
   }
+  d2LastMouseX = d2MouseX;
+  d2LastMouseY = d2MouseY;
 
   d2.step();
   await d2.render();
@@ -549,9 +551,10 @@ window.d2Scrub = (val) => {
 // Mouse events for push
 d2canvas.addEventListener('mousedown', (e) => {
   d2MouseDown = true;
-  const rect = d2canvas.getBoundingClientRect();
   d2MouseX = e.clientX;
   d2MouseY = e.clientY;
+  d2LastMouseX = e.clientX;
+  d2LastMouseY = e.clientY;
 });
 d2canvas.addEventListener('mousemove', (e) => {
   d2MouseX = e.clientX;
@@ -566,6 +569,8 @@ d2canvas.addEventListener('touchstart', (e) => {
   d2MouseDown = true;
   d2MouseX = e.touches[0].clientX;
   d2MouseY = e.touches[0].clientY;
+  d2LastMouseX = e.touches[0].clientX;
+  d2LastMouseY = e.touches[0].clientY;
 });
 d2canvas.addEventListener('touchmove', (e) => {
   e.preventDefault();
