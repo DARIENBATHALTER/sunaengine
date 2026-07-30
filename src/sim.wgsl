@@ -1,8 +1,8 @@
 // ============================================================================
-// sunaEngine — stripped deterministic PBF solver (WGSL)
+// sunaEngine - stripped deterministic PBF solver (WGSL)
 // ============================================================================
 
-// ─────────────────────────────────── fixed-point arithmetic core ────────────
+// ---------------------------------- fixed-point arithmetic core ------------
 const I32_MAX: i32 = 2147483647;
 const I32_MIN: i32 = -2147483647 - 1;
 const ONE16: i32 = 65536;
@@ -83,10 +83,9 @@ fn fp_divshift(num: i32, den: i32, k: u32) -> i32 {
   return i64_shr_rne_sat(i64_mul_i32(nn, Rn), bitcast<u32>(s));
 }
 
-// ─────────────────────────────────── PBF solver constants ──────────────────
+// ---------------------------------- PBF solver constants ------------------
 const ONE    : i32 = 65536;
 const H      : i32 = 163840;
-const DX0    : i32 = 65536;
 const RHO0   : i32 = 1048576;
 const TWO_RHO0 : i32 = 2097152;
 const PRE    : u32 = 4u;
@@ -95,18 +94,13 @@ const H2S    : i32 = 104857600;
 const KSH    : u32 = 15u;
 const GF     : u32 = 22u;
 const CF     : u32 = 22u;
-const ACC    : u32 = 8u;
 const MAXNBR : u32 = 48u;
 const WALL   : i32 = 32768;
 const VMAX   : i32 = 65536;
 
 const LAM_MAX  : i32 =  4194304;
-const S_TERM   : i32 = 16777216;
 const DP_TERM  : i32 =  2097152;
-const XS_TERM  : i32 =  2097152;
-const ST_TERM  : i32 =  4194304;
 const RINV_MAX : i32 =   262144;
-const CUR_SIGN : i32 =       -1;
 const C_MAX    : i32 =    58000;
 const RHO_FLOOR_RINV : i32 = 32768;
 const RHO_FLOOR_K    : i32 = 65536;
@@ -115,11 +109,9 @@ const NEG_DP_TERM : i32 =  -2097152;
 
 // Water material
 const W_EPS      : i32 =   40000;
-const W_DPMAX    : i32 =   16384;
 const W_XSPH     : i32 =    6000;
 const W_GAMMACOH : i32 =     240;
 const W_GAMMACUR : i32 =      60;
-const W_ADHESION : i32 =       0;
 const W_GRAV     : i32 =    1200;
 
 // LUT offsets
@@ -127,7 +119,7 @@ const OFF_W : u32 = 0u;
 const OFF_G : u32 = 3202u;
 const OFF_C : u32 = 6404u;
 
-// ─────────────────────────────────── structures ─────────────────────────────
+// ---------------------------------- structures -----------------------------
 struct Particle {
   pos   : vec2<i32>,
   vel   : vec2<i32>,
@@ -162,7 +154,7 @@ struct Params {
   maxNbr    : u32,
 }
 
-// ─────────────────────────────────── bindings ────────────────────────────────
+// ---------------------------------- bindings --------------------------------
 @group(0) @binding(0)  var<uniform>             P         : Params;
 @group(0) @binding(1)  var<storage, read>       state_in  : array<Particle>;
 @group(0) @binding(2)  var<storage, read_write> state_out : array<Particle>;
@@ -177,7 +169,7 @@ struct Params {
 @group(0) @binding(11) var<storage, read_write> nbrN     : array<u32>;
 @group(0) @binding(12) var<storage, read>       luts     : array<i32>;
 
-// ─────────────────────────────────── helpers ─────────────────────────────────
+// ---------------------------------- helpers ---------------------------------
 fn cell_coord(p : vec2<i32>) -> vec2<i32> {
   let cx = (p.x - P.originX) >> P.cellShift;
   let cy = (p.y - P.originY) >> P.cellShift;
@@ -194,70 +186,15 @@ fn lut_index(d : vec2<i32>) -> i32 {
   return r2 >> KSH;
 }
 fn grad_q16(gt : i32, d : i32) -> i32 { return fp_mul_s(gt, d, GF + 4u); }
-fn is_boundary(j : u32) -> bool { return j >= P.nFluid; }
-fn nbr_count(i : u32) -> u32 { return nbrN[i]; }
-fn pred_delta(pi : vec2<i32>, j : u32) -> vec2<i32> {
-  let pj = derived[j].pred;
-  return vec2<i32>(fp_sub_sat(pi.x, pj.x), fp_sub_sat(pi.y, pj.y));
-}
 fn wall_clamp(p : vec2<i32>) -> vec2<i32> {
   return clamp(p, vec2<i32>(WALL, WALL), vec2<i32>(P.domW - WALL, P.domH - WALL));
 }
-fn mat_mix(a : i32, b : i32) -> i32 { return (a + b) >> 1; }
 fn sym_k(rhoi : i32, rhoj : i32) -> i32 {
   let den = max(RHO_FLOOR_K, fp_add_sat(rhoi, rhoj));
   return clamp(fp_divshift(TWO_RHO0, den, 16u), 0, RINV_MAX);
 }
 
-// ─────────────────────────────────── GPU PREFIX SUM (Blelloch) ──────────────
-var<workgroup> wg_data : array<u32, 512>;
-
-@compute @workgroup_size(256)
-fn scanBlock(@builtin(global_invocation_id) gid : vec3<u32>,
-             @builtin(local_invocation_id) lid : vec3<u32>) {
-  let i = gid.x;
-  var v: u32 = 0u;
-  if (i < P.cellTotal) { v = atomicLoad(&cellCount[i]); }
-  
-  // Upsweep
-  wg_data[lid.x] = v;
-  wg_data[lid.x + 256u] = 0u;
-  for (var off: u32 = 1u; off < 256u; off = off * 2u) {
-    workgroupBarrier();
-    if (lid.x >= off) { wg_data[lid.x] = wg_data[lid.x] + wg_data[lid.x - off]; }
-  }
-  workgroupBarrier();
-  
-  // Save block sum
-  let blockSum = wg_data[255u];
-  if (lid.x == 0u) { blockSums[gid.x / 256u] = blockSum; }
-  
-  // Downsweep
-  if (lid.x == 0u) { wg_data[255u] = 0u; }
-  for (var off: u32 = 128u; off > 0u; off = off >> 1u) {
-    workgroupBarrier();
-    if (lid.x < off) {
-      let t = wg_data[lid.x];
-      let u = wg_data[lid.x + off];
-      wg_data[lid.x + off] = t + u;
-      wg_data[lid.x] = u;
-    }
-  }
-  workgroupBarrier();
-  if (i < P.cellTotal) { cellStart[i] = wg_data[lid.x]; }
-}
-
-@compute @workgroup_size(256)
-fn scanAdd(@builtin(global_invocation_id) gid : vec3<u32>) {
-  let i = gid.x;
-  if (i >= P.cellTotal) { return; }
-  let block = i / 256u;
-  if (block > 0u) {
-    cellStart[i] = cellStart[i] + blockSums[block - 1u];
-  }
-}
-
-// ─────────────────────────────────── GRID PASSES ─────────────────────────────
+// ---------------------------------- GRID PASSES -----------------------------
 @compute @workgroup_size(256)
 fn gridCount(@builtin(global_invocation_id) gid : vec3<u32>) {
   let i = gid.x;
@@ -296,8 +233,7 @@ fn buildNbr(@builtin(global_invocation_id) gid : vec3<u32>) {
       for (var k: u32 = start; k < end; k = k + 1u) {
         let j = bucketIds[k];
         if (j == i) { continue; }
-        let pj = state_in[j].pos;
-        let d  = vec2<i32>(fp_sub_sat(pi.x, pj.x), fp_sub_sat(pi.y, pj.y));
+        let d = vec2<i32>(fp_sub_sat(pi.x, state_in[j].pos.x), fp_sub_sat(pi.y, state_in[j].pos.y));
         let li = lut_index(d);
         if (li < 0 || nn >= MAXNBR) { continue; }
         nbr[i * P.maxNbr + nn] = j;
@@ -308,13 +244,12 @@ fn buildNbr(@builtin(global_invocation_id) gid : vec3<u32>) {
   nbrN[i] = nn;
 }
 
-// ─────────────────────────────────── PREDICT ─────────────────────────────────
+// ---------------------------------- PREDICT ---------------------------------
 @compute @workgroup_size(256)
 fn predict(@builtin(global_invocation_id) gid : vec3<u32>) {
   let i = gid.x;
   if (i >= P.nFluid) { return; }
   let s = state_in[i];
-  // Simple Euler integration with gravity
   let grav_vx = fp_add_sat(s.vel.x, W_GRAV);
   let grav_vy = fp_add_sat(s.vel.y, W_GRAV);
   let px = fp_add_sat(s.pos.x, grav_vx);
@@ -323,7 +258,7 @@ fn predict(@builtin(global_invocation_id) gid : vec3<u32>) {
   derived[i].vtmp = s.vel;
 }
 
-// ─────────────────────────────────── SOLVE A ─────────────────────────────────
+// ---------------------------------- SOLVE A ---------------------------------
 @compute @workgroup_size(256)
 fn solveA(@builtin(global_invocation_id) gid : vec3<u32>) {
   let i = gid.x;
@@ -349,7 +284,7 @@ fn solveA(@builtin(global_invocation_id) gid : vec3<u32>) {
   derived[i].lam = clamp(lam, NEG_LAM_MAX, LAM_MAX);
 }
 
-// ─────────────────────────────────── SOLVE B ─────────────────────────────────
+// ---------------------------------- SOLVE B ---------------------------------
 @compute @workgroup_size(256)
 fn solveB(@builtin(global_invocation_id) gid : vec3<u32>) {
   let i = gid.x;
@@ -374,28 +309,25 @@ fn solveB(@builtin(global_invocation_id) gid : vec3<u32>) {
     let gt = luts[OFF_G + u32(li)];
     let kij = sym_k(rhoi, rhoj);
     let klam = fp_mul_s(kij, lam, 16u);
-    // Density constraint gradient
     dpx = fp_add_sat(dpx, fp_mul_s(klam, grad_q16(gt, d.x), GF + 4u));
     dpy = fp_add_sat(dpy, fp_mul_s(klam, grad_q16(gt, d.y), GF + 4u));
 
-    // Cohesion
     let ct = luts[OFF_C + u32(li)];
     let cohW = (W_GAMMACOH + W_GAMMACOH) >> 1;
     dpx = fp_add_sat(dpx, fp_mul_s(fp_mul_s(cohW, ct, CF), d.x, CF));
     dpy = fp_add_sat(dpy, fp_mul_s(fp_mul_s(cohW, ct, CF), d.y, CF));
 
-    // Curvature (surface tension)
     let curW = (W_GAMMACUR + W_GAMMACUR) >> 1;
     let cur = fp_mul_s(curW, ct, CF);
-    dpx = fp_add_sat(dpx, fp_mul_s(CUR_SIGN * cur, d.x, CF));
-    dpy = fp_add_sat(dpy, fp_mul_s(CUR_SIGN * cur, d.y, CF));
+    dpx = fp_add_sat(dpx, fp_mul_s(-cur, d.x, CF));
+    dpy = fp_add_sat(dpy, fp_mul_s(-cur, d.y, CF));
   }
 
   derived[i].dp.x = clamp(dpx, NEG_DP_TERM, DP_TERM);
   derived[i].dp.y = clamp(dpy, NEG_DP_TERM, DP_TERM);
 }
 
-// ─────────────────────────────────── APPLY DP ───────────────────────────────
+// ---------------------------------- APPLY DP -------------------------------
 @compute @workgroup_size(256)
 fn applyDp(@builtin(global_invocation_id) gid : vec3<u32>) {
   let i = gid.x;
@@ -407,7 +339,7 @@ fn applyDp(@builtin(global_invocation_id) gid : vec3<u32>) {
   derived[i].dp = vec2<i32>(0, 0);
 }
 
-// ─────────────────────────────────── FINALIZE ───────────────────────────────
+// ---------------------------------- FINALIZE -------------------------------
 @compute @workgroup_size(256)
 fn finalize(@builtin(global_invocation_id) gid : vec3<u32>) {
   let i = gid.x;
@@ -416,13 +348,11 @@ fn finalize(@builtin(global_invocation_id) gid : vec3<u32>) {
   let old  = state_in[i].pos;
   var vel  = vec2<i32>(fp_sub_sat(pred.x, old.x), fp_sub_sat(pred.y, old.y));
 
-  // XSPH
   let nn = nbrN[i];
   var dvx: i32 = 0; var dvy: i32 = 0;
   for (var k: u32 = 0u; k < nn; k = k + 1u) {
     let j = nbr[i * P.maxNbr + k];
-    let pj = derived[j].pred;
-    let d = vec2<i32>(fp_sub_sat(pred.x, pj.x), fp_sub_sat(pred.y, pj.y));
+    let d = vec2<i32>(fp_sub_sat(pred.x, derived[j].pred.x), fp_sub_sat(pred.y, derived[j].pred.y));
     let li = lut_index(d);
     if (li < 0) { continue; }
     let w = luts[OFF_W + u32(li)];
@@ -444,7 +374,7 @@ fn finalize(@builtin(global_invocation_id) gid : vec3<u32>) {
   state_out[i]._pad1 = state_in[i]._pad1;
 }
 
-// ─────────────────────────────────── COPY BOUNDARY ──────────────────────────
+// ---------------------------------- COPY BOUNDARY --------------------------
 @compute @workgroup_size(256)
 fn copyBoundary(@builtin(global_invocation_id) gid : vec3<u32>) {
   let i = gid.x;
