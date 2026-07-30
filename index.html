@@ -205,7 +205,7 @@
   </p>
   <div class="badges">
     <span class="badge hl">WebGPU</span>
-    <span class="badge">128-bit State Hash</span>
+    <span class="badge">256-bit State Hash</span>
     <span class="badge">Integer-Only Math</span>
     <span class="badge">Zero Floating Point</span>
     <span class="badge">MIT Licensed</span>
@@ -335,7 +335,7 @@
     <div class="spec"><div class="value">i32</div><div class="label">Arithmetic Type</div></div>
     <div class="spec"><div class="value">256-bit</div><div class="label">State Hash (Murmur3)</div></div>
     <div class="spec"><div class="value">RNE</div><div class="label">Rounding (Half-to-Even)</div></div>
-    <div class="spec"><div class="value">8 KiB</div><div class="label">Per-Particle State</div></div>
+    <div class="spec"><div class="value">32 B</div><div class="label">Per-Particle State</div></div>
     <div class="spec"><div class="value">2.5 wu</div><div class="label">Kernel Radius</div></div>
   </div>
 </section>
@@ -471,16 +471,16 @@ async function d2Loop() {
   }
 
   // Push effect: if mouse is down, apply a push force to nearby particles
-  if (d2MouseDown) {
-    // Read back state and push particles near the cursor
+  if (d2MouseDown && d2.frame % 6 === 0) {
+    // Throttled push: spawn near cursor every ~6 frames (~10 Hz)
     const rect = d2canvas.getBoundingClientRect();
     const scaleW = 96 / rect.width;
     const scaleH = 54 / rect.height;
     const wx = (d2MouseX - rect.left) * scaleW;
     const wy = 54 - (d2MouseY - rect.top) * scaleH;
-
-    // Spawn a temporary push
-    d2.spawn(wx, wy, 1.5);
+    if (d2.n < d2.maxParticles - 20) {
+      d2.spawn(wx, wy, 1.2);
+    }
   }
 
   d2.step();
