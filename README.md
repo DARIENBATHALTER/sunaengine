@@ -54,7 +54,9 @@ Position-Based Dynamics (PBF) with:
 
 ## License
 
-MIT — see [LICENSE](LICENSE)
+GNU General Public License v3.0 (GPL-3.0) — see [LICENSE](LICENSE).
+
+SunaEngine is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
 
 ## Built by
 

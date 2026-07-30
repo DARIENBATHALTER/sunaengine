@@ -229,7 +229,7 @@ fn buildNbr(@builtin(global_invocation_id) gid : vec3<u32>) {
       if (cx < 0 || cy < 0 || cx >= i32(P.gridW) || cy >= i32(P.gridH)) { continue; }
       let ci2 = u32(cy) * P.gridW + u32(cx);
       let start = cellStart[ci2];
-      let end   = ci2 + 1u < P.cellTotal ? cellStart[ci2 + 1u] : P.n;
+      let end   = select(P.n, cellStart[ci2 + 1u], ci2 + 1u < P.cellTotal);
       for (var k: u32 = start; k < end; k = k + 1u) {
         let j = bucketIds[k];
         if (j == i) { continue; }
