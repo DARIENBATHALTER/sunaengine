@@ -60,7 +60,7 @@ SunaEngine is free software: you can redistribute it and/or modify it under the 
 
 ## Built by
 
-[Darien Bathalter](https://github.com/DARIENBATHALTER) — extracted from [SunaBox](https://github.com/DARIENBATHALTER/aether), the full-featured particle physics sandbox.
+[Darien Bathalter](https://github.com/DARIENBATHALTER) — extracted from [SunaBox](https://github.com/DARIENBATHALTER/sunabox), the full-featured particle physics sandbox.
 
 ---
 

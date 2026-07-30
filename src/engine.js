@@ -54,6 +54,10 @@ export class SunaEngine {
     this._domW = this.w * ONE;
     this._domH = this.h * ONE;
 
+    if (cellTotal > 1024) {
+      throw new Error(`demo grid too large for the single-workgroup scan: ${cellTotal} cells (max 1024)`);
+    }
+
     // Allocate buffers
     const n = this.maxParticles;
     const ST = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC;
@@ -61,18 +65,21 @@ export class SunaEngine {
     const mkBuf = (size, usage, label) =>
       device.createBuffer({ size: Math.max(4, size), usage, label });
 
+    // WebGPU guarantees only maxStorageBuffersPerShaderStage = 8. The first
+    // public draft bound 12 storage buffers and EVERY pipeline silently failed
+    // validation — the simulation never ran and the twin hashes still matched,
+    // because two frozen worlds agree with each other. Scratch is therefore
+    // packed into THREE buffers with explicit offsets in the shader:
+    //   scratchA: cellCount[cellTotal] | cellStart[cellTotal+1]
+    //   scratchB: cellOf[n] | bucketIds[n]
+    //   nbrBlk:   nbr[n*MAXNBR] | nbrN[n]
     this.buf = {
       stateA:    mkBuf(n * PARTICLE_WORDS * 4, ST | GPUBufferUsage.COPY_SRC, 'stateA'),
       stateB:    mkBuf(n * PARTICLE_WORDS * 4, ST, 'stateB'),
       derived:   mkBuf(n * 64, ST, 'derived'),
-      cellCount: mkBuf(cellTotal * 4, ST, 'cellCount'),
-      cellStart: mkBuf((cellTotal + 1) * 4, ST, 'cellStart'),
-      blockSums: mkBuf(Math.ceil(cellTotal / 256) * 4, ST, 'blockSums'),
-      cellOf:    mkBuf(n * 4, ST, 'cellOf'),
-      bucketIds: mkBuf(n * 4, ST, 'bucketIds'),
-      sortedIds: mkBuf(n * 4, ST, 'sortedIds'),
-      nbr:       mkBuf(n * MAXNBR * 4, ST, 'nbr'),
-      nbrN:      mkBuf(n * 4, ST, 'nbrN'),
+      scratchA:  mkBuf((2 * cellTotal + 1) * 4, ST, 'scratchA'),
+      scratchB:  mkBuf(2 * n * 4, ST, 'scratchB'),
+      nbrBlk:    mkBuf((n * MAXNBR + n) * 4, ST, 'nbrBlk'),
       luts:      mkBuf(lutImg.length * 4, ST, 'luts'),
       params:    mkBuf(48, UNI, 'params'),
       readback:  mkBuf(n * PARTICLE_WORDS * 4, GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ, 'readback'),
@@ -82,7 +89,8 @@ export class SunaEngine {
     // Write LUTs
     device.queue.writeBuffer(this.buf.luts, 0, new Int32Array(lutImg));
 
-    // Explicit bind-group layout shared by all passes (avoids 'auto' layout mismatches)
+    // Explicit bind-group layout shared by all passes. 1 uniform + 7 storage,
+    // inside the default limit of 8 storage buffers per compute stage.
     this._bindGroupLayout = device.createBindGroupLayout({
       entries: [
         { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
@@ -92,12 +100,7 @@ export class SunaEngine {
         { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
         { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
         { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
-        { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
-        { binding: 8, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
-        { binding: 9, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
-        { binding: 10, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
-        { binding: 11, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
-        { binding: 12, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+        { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
       ],
     });
     this._pipelineLayout = device.createPipelineLayout({
@@ -114,6 +117,7 @@ export class SunaEngine {
 
     this.pipe = {
       gridCount:    mkPipe('gridCount', 256),
+      gridScan:     mkPipe('gridScan', 256),
       gridSort:     mkPipe('gridSort', 256),
       buildNbr:     mkPipe('buildNbr', 256),
       predict:      mkPipe('predict', 256),
@@ -180,16 +184,19 @@ export class SunaEngine {
     const cxT = Math.round(cx * ONE);
     const cyT = Math.round(cy * ONE);
     const rT = Math.round(radius * ONE);
-    const spacing = ONE;
-    const rows = Math.ceil(rT / spacing) * 2 + 1;
+    // Rest spacing is 1.00 wu (the solver's RHO0 calibration). The old hex
+    // packing (row pitch 0.866 wu) overpacked spawns by 1/0.866^2 = 1.33x rest
+    // density, so every spawn detonated against RHO0 before it could fall.
+    const spacing = Math.round(ONE * 1.02);
+    const rLim = Math.ceil(radius) + 1;
 
     // Build list of new particle positions
     const newParticles = [];
-    for (let row = -rows; row <= rows; row++) {
-      for (let col = -rows; col <= rows; col++) {
+    for (let row = -rLim; row <= rLim; row++) {
+      for (let col = -rLim; col <= rLim; col++) {
         if (this._n + newParticles.length >= maxN) break;
-        const x = cxT + Math.round(col * spacing + (row & 1) * spacing / 2);
-        const y = cyT + Math.round(row * spacing * 0.866);
+        const x = cxT + col * spacing;
+        const y = cyT + row * spacing;
         const dx = x - cxT, dy = y - cyT;
         if (dx * dx + dy * dy > rT * rT) continue;
         if (x <= ONE || x >= this._domW - ONE || y <= ONE || y >= this._domH - ONE) continue;
@@ -209,6 +216,9 @@ export class SunaEngine {
       // vel=(0,0), matId=0, flags=0, pad=0 — all zero by default
     }
 
+    // Write into BOTH ping-pong slots; whichever is current, the next step's
+    // input holds the spawn. `step()` keeps buf.stateA pointing at the input
+    // of the next substep.
     this._device.queue.writeBuffer(this.buf.stateA, offset * 4, spawnData);
     this._device.queue.writeBuffer(this.buf.stateB, offset * 4, spawnData);
 
@@ -220,7 +230,9 @@ export class SunaEngine {
 
   /**
    * Advance simulation by `substeps` substeps.
-   * Uses CPU-side prefix sum for cell counts (avoids complex multi-level GPU scan).
+   * Grid: count -> deterministic prefix scan -> scatter -> neighbour lists.
+   * Everything lives in one command encoder per substep; queue order between
+   * passes inside an encoder is submission order, which is all we need.
    */
   step(substeps = SUBSTEPS_PER_FRAME) {
     if (!this._ready) return;
@@ -234,130 +246,62 @@ export class SunaEngine {
     let stateIn = buf.stateA;
     let stateOut = buf.stateB;
 
+    const bgA = device.createBindGroup({
+      layout: this._bindGroupLayout,
+      entries: [
+        { binding: 0, resource: { buffer: buf.params } },
+        { binding: 1, resource: { buffer: buf.stateA } },
+        { binding: 2, resource: { buffer: buf.stateB } },
+        { binding: 3, resource: { buffer: buf.derived } },
+        { binding: 4, resource: { buffer: buf.scratchA } },
+        { binding: 5, resource: { buffer: buf.scratchB } },
+        { binding: 6, resource: { buffer: buf.nbrBlk } },
+        { binding: 7, resource: { buffer: buf.luts } },
+      ],
+    });
+    const bgB = device.createBindGroup({
+      layout: this._bindGroupLayout,
+      entries: [
+        { binding: 0, resource: { buffer: buf.params } },
+        { binding: 1, resource: { buffer: buf.stateB } },
+        { binding: 2, resource: { buffer: buf.stateA } },
+        { binding: 3, resource: { buffer: buf.derived } },
+        { binding: 4, resource: { buffer: buf.scratchA } },
+        { binding: 5, resource: { buffer: buf.scratchB } },
+        { binding: 6, resource: { buffer: buf.nbrBlk } },
+        { binding: 7, resource: { buffer: buf.luts } },
+      ],
+    });
+
     for (let s = 0; s < substeps; s++) {
       const enc = device.createCommandEncoder();
+      const bg = (stateIn === buf.stateA) ? bgA : bgB;
 
-      const makeBG = (sin, sout) => device.createBindGroup({
-        layout: this._bindGroupLayout,
-        entries: [
-          { binding: 0, resource: { buffer: buf.params } },
-          { binding: 1, resource: { buffer: sin } },
-          { binding: 2, resource: { buffer: sout } },
-          { binding: 3, resource: { buffer: buf.derived } },
-          { binding: 4, resource: { buffer: buf.cellCount } },
-          { binding: 5, resource: { buffer: buf.cellStart } },
-          { binding: 6, resource: { buffer: buf.blockSums } },
-          { binding: 7, resource: { buffer: buf.cellOf } },
-          { binding: 8, resource: { buffer: buf.bucketIds } },
-          { binding: 9, resource: { buffer: buf.sortedIds } },
-          { binding: 10, resource: { buffer: buf.nbr } },
-          { binding: 11, resource: { buffer: buf.nbrN } },
-          { binding: 12, resource: { buffer: buf.luts } },
-        ],
-      });
+      // 1. Clear the cell counters (only that segment of scratchA).
+      enc.clearBuffer(buf.scratchA, 0, cellTotal * 4);
 
-      // 1. Clear cellCount
-      enc.clearBuffer(buf.cellCount, 0, cellTotal * 4);
-
-      // 2. gridCount
-      {
+      const run = (pipeline, groups) => {
         const pass = enc.beginComputePass();
-        pass.setPipeline(pipe.gridCount);
-        pass.setBindGroup(0, makeBG(stateIn, stateOut));
-        pass.dispatchWorkgroups(wg(n));
+        pass.setPipeline(pipeline);
+        pass.setBindGroup(0, bg);
+        pass.dispatchWorkgroups(groups);
         pass.end();
+      };
+
+      run(pipe.gridCount, wg(n));
+      run(pipe.gridScan, 1);
+      run(pipe.gridSort, wg(n));
+      run(pipe.buildNbr, wg(n));
+      run(pipe.predict, wg(n));
+      run(pipe.solveA, wg(n));
+      for (let iter = 0; iter < 4; iter++) {
+        run(pipe.solveB, wg(n));
+        run(pipe.applyDp, wg(n));
       }
+      run(pipe.finalize, wg(n));
+      run(pipe.copyBoundary, wg(n));
 
-      // 3. CPU-side prefix sum: simple fallback for demo-size particle counts.
-      // gridSort puts everything in cell 0; buildNbr scans all particles.
-      // O(n²) neighbor search — correct and fast enough for demo sizes.
-      {
-        const starts = new Uint32Array(cellTotal + 1);
-        starts[0] = 0;
-        for (let i = 1; i <= cellTotal; i++) starts[i] = n;
-        device.queue.writeBuffer(buf.cellStart, 0, starts);
-      }
-
-      // 4. gridSort
-      {
-        const enc2 = device.createCommandEncoder();
-        const pass = enc2.beginComputePass();
-        pass.setPipeline(pipe.gridSort);
-        pass.setBindGroup(0, makeBG(stateIn, stateOut));
-        pass.dispatchWorkgroups(wg(n));
-        pass.end();
-        device.queue.submit([enc2.finish()]);
-      }
-
-      // 5. buildNbr through finalize in one command encoder
-      {
-        const enc2 = device.createCommandEncoder();
-
-        // buildNbr — scans all particles (simplified: all-in-one-cell approach)
-        {
-          const pass = enc2.beginComputePass();
-          pass.setPipeline(pipe.buildNbr);
-          pass.setBindGroup(0, makeBG(stateIn, stateOut));
-          pass.dispatchWorkgroups(wg(n));
-          pass.end();
-        }
-
-        // predict
-        {
-          const pass = enc2.beginComputePass();
-          pass.setPipeline(pipe.predict);
-          pass.setBindGroup(0, makeBG(stateIn, stateOut));
-          pass.dispatchWorkgroups(wg(n));
-          pass.end();
-        }
-
-        // solveA
-        {
-          const pass = enc2.beginComputePass();
-          pass.setPipeline(pipe.solveA);
-          pass.setBindGroup(0, makeBG(stateIn, stateOut));
-          pass.dispatchWorkgroups(wg(n));
-          pass.end();
-        }
-
-        // PBF iterations (solveB + applyDp) × 4
-        for (let iter = 0; iter < 4; iter++) {
-          {
-            const pass = enc2.beginComputePass();
-            pass.setPipeline(pipe.solveB);
-            pass.setBindGroup(0, makeBG(stateIn, stateOut));
-            pass.dispatchWorkgroups(wg(n));
-            pass.end();
-          }
-          {
-            const pass = enc2.beginComputePass();
-            pass.setPipeline(pipe.applyDp);
-            pass.setBindGroup(0, makeBG(stateIn, stateOut));
-            pass.dispatchWorkgroups(wg(n));
-            pass.end();
-          }
-        }
-
-        // finalize
-        {
-          const pass = enc2.beginComputePass();
-          pass.setPipeline(pipe.finalize);
-          pass.setBindGroup(0, makeBG(stateIn, stateOut));
-          pass.dispatchWorkgroups(wg(n));
-          pass.end();
-        }
-
-        // copy boundary
-        {
-          const pass = enc2.beginComputePass();
-          pass.setPipeline(pipe.copyBoundary);
-          pass.setBindGroup(0, makeBG(stateIn, stateOut));
-          pass.dispatchWorkgroups(wg(n));
-          pass.end();
-        }
-
-        device.queue.submit([enc2.finish()]);
-      }
+      device.queue.submit([enc.finish()]);
 
       // Swap
       [stateIn, stateOut] = [stateOut, stateIn];
@@ -407,9 +351,13 @@ export class SunaEngine {
       const cy = ch - (py / ONE) * scaleY;
       const r = Math.max(2, scaleX * 0.5);
 
-      ctx.fillStyle = i < this._nFluid
-        ? 'rgba(64, 160, 255, 0.85)'
-        : 'rgba(96, 96, 112, 0.5)';
+      // Buffer layout is [walls, fluid]: fluid particles are the LAST nFluid
+      // slots. (The stripped renderer mistook walls for the fluid band, so the
+      // box edge glowed bright and the water rendered dim.)
+      const wallCount = n - this._nFluid;
+      ctx.fillStyle = i >= wallCount
+        ? 'rgba(64, 170, 255, 0.9)'
+        : 'rgba(96, 96, 112, 0.45)';
 
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
@@ -422,10 +370,13 @@ export class SunaEngine {
 
   /**
    * Apply an impulse to particles near (cx, cy).
+   * Overlapping pushes are dropped: one mapped readback at a time.
    */
   async pushParticles(cx, cy, radius, fx, fy) {
-    if (!this._ready) return;
-    const n = this._n;
+    if (!this._ready || this._pushPending) return;
+    this._pushPending = true;
+    try {
+      const n = this._n;
     const stateSize = n * PARTICLE_WORDS * 4;
     if (stateSize === 0) return;
 
@@ -456,6 +407,9 @@ export class SunaEngine {
 
     this._device.queue.writeBuffer(this.buf.stateA, 0, state, 0, stateSize);
     this._device.queue.writeBuffer(this.buf.stateB, 0, state, 0, stateSize);
+    } finally {
+      this._pushPending = false;
+    }
   }
 
   getHash() {

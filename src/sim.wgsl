@@ -1,6 +1,21 @@
 // ============================================================================
 // sunaEngine - stripped deterministic PBF solver (WGSL)
 // ============================================================================
+//
+// Binding budget note (2026-07-30): WebGPU guarantees only 8 storage buffers
+// per compute stage. The first public draft consumed 12 — above the default
+// limit, so `createComputePipeline` marked every pipeline invalid and every
+// dispatch became a silent no-op. The demo page looked frozen (it was). The
+// scratch arrays are now merged into three packed buffers:
+//   scratchA = cellCount[cellTotal] | cellStart[cellTotal+1]
+//   scratchB = cellOf[i16 as u32..]    | bucketIds            | sortedIds(unused)
+//   nbrBlk   = nbr[n*MAXNBR]         | nbrN[n]
+//
+// Determinism note: `gridSort` scatters via atomic tickets, so the order of
+// ids inside one cell varies run-to-run. Every consumer that ACCUMULATES over
+// neighbours sorts the neighbour index list first (insertion sort in-register),
+// so the accumulation order is a pure function of particle ids, not of ticket
+// order. That is what makes the hash reproducible across runs and devices.
 
 // ---------------------------------- fixed-point arithmetic core ------------
 const I32_MAX: i32 = 2147483647;
@@ -155,19 +170,25 @@ struct Params {
 }
 
 // ---------------------------------- bindings --------------------------------
+// 1 uniform + 7 storage = inside the WebGPU default maxStorageBuffersPerShaderStage (8).
 @group(0) @binding(0)  var<uniform>             P         : Params;
 @group(0) @binding(1)  var<storage, read>       state_in  : array<Particle>;
 @group(0) @binding(2)  var<storage, read_write> state_out : array<Particle>;
 @group(0) @binding(3)  var<storage, read_write> derived   : array<Derived>;
-@group(0) @binding(4)  var<storage, read_write> cellCount : array<atomic<u32>>;
-@group(0) @binding(5)  var<storage, read_write> cellStart : array<u32>;
-@group(0) @binding(6)  var<storage, read_write> blockSums : array<u32>;
-@group(0) @binding(7)  var<storage, read_write> cellOf   : array<u32>;
-@group(0) @binding(8)  var<storage, read_write> bucketIds : array<u32>;
-@group(0) @binding(9)  var<storage, read_write> sortedIds : array<u32>;
-@group(0) @binding(10) var<storage, read_write> nbr      : array<u32>;
-@group(0) @binding(11) var<storage, read_write> nbrN     : array<u32>;
-@group(0) @binding(12) var<storage, read>       luts     : array<i32>;
+// scratchA: [0, cellTotal) = cellCount (atomic); [cellTotal, 2*cellTotal+1) = cellStart
+@group(0) @binding(4)  var<storage, read_write> scratchA  : array<atomic<u32>>;
+// scratchB: [0, n) = cellOf; [n, 2n) = bucketIds
+@group(0) @binding(5)  var<storage, read_write> scratchB  : array<u32>;
+// nbrBlk: [0, n*MAXNBR) = nbr ids; [n*MAXNBR, n*MAXNBR+n) = nbrN counts
+@group(0) @binding(6)  var<storage, read_write> nbrBlk    : array<u32>;
+@group(0) @binding(7)  var<storage, read>       luts      : array<i32>;
+
+fn cellCountPtr(c: u32) -> u32 { return c; }
+fn cellStartPtr(c: u32) -> u32 { return P.cellTotal + c; }
+fn cellOfPtr(i: u32) -> u32 { return i; }
+fn bucketPtr(k: u32) -> u32 { return P.n + k; }
+fn nbrPtr(fi: u32, k: u32) -> u32 { return fi * P.maxNbr + k; }
+fn nbrNPtr(fi: u32) -> u32 { return P.n * P.maxNbr + fi; }
 
 // ---------------------------------- helpers ---------------------------------
 fn cell_coord(p : vec2<i32>) -> vec2<i32> {
@@ -201,18 +222,57 @@ fn gridCount(@builtin(global_invocation_id) gid : vec3<u32>) {
   if (i >= P.n) { return; }
   let p = state_in[i].pos;
   let c = cell_coord(p);
-  cellOf[i] = cell_index(c);
-  atomicAdd(&cellCount[cell_index(c)], 1u);
+  scratchB[cellOfPtr(i)] = cell_index(c);
+  atomicAdd(&scratchA[cellCountPtr(cell_index(c))], 1u);
+}
+
+// Prefix sum over cellCount -> cellStart. Deterministic: the accumulation
+// order is the cell index order, always. One workgroup; cellTotal is capped at
+// 1024 by the host, so four sequential 256-wide Hillis-Steele chunks with an
+// explicit scalar carry suffice. Thread 0 owns the carry; the whole scan is a
+// pure function of cellCount and never of ticket timing.
+var<workgroup> scanTmp: array<u32, 256>;
+var<workgroup> carry: array<u32, 1>;
+@compute @workgroup_size(256)
+fn gridScan(@builtin(local_invocation_id) lid : vec3<u32>) {
+  let t = lid.x;
+  if (t == 0u) { carry[0] = 0u; }
+  workgroupBarrier();
+  for (var base = 0u; base < P.cellTotal; base = base + 256u) {
+    let i = base + t;
+    var v = 0u;
+    if (i < P.cellTotal) { v = atomicLoad(&scratchA[cellCountPtr(i)]); }
+    scanTmp[t] = v;
+    workgroupBarrier();
+    for (var off = 1u; off < 256u; off = off << 1u) {
+      var add = 0u;
+      if (t >= off) { add = scanTmp[t - off]; }
+      workgroupBarrier();
+      scanTmp[t] = scanTmp[t] + add;
+      workgroupBarrier();
+    }
+    let total = scanTmp[255];
+    if (i < P.cellTotal) {
+      atomicStore(&scratchA[cellStartPtr(i + 1u)], carry[0] + scanTmp[t]);
+    }
+    workgroupBarrier();
+    if (t == 0u) { carry[0] = carry[0] + total; }
+    workgroupBarrier();
+    // cellStart[0] must be 0 for the first chunk; write it once.
+    if (base == 0u && t == 0u) { atomicStore(&scratchA[cellStartPtr(0u)], 0u); }
+    workgroupBarrier();
+  }
 }
 
 @compute @workgroup_size(256)
 fn gridSort(@builtin(global_invocation_id) gid : vec3<u32>) {
   let i = gid.x;
   if (i >= P.n) { return; }
-  let cidx = cellOf[i];
-  let slot = atomicSub(&cellCount[cidx], 1u) - 1u;
-  let idx  = cellStart[cidx] + slot;
-  bucketIds[idx] = i;
+  let cidx = scratchB[cellOfPtr(i)];
+  // Ticket order within a cell is unspecified; consumers SORT before summing.
+  let slot = atomicSub(&scratchA[cellCountPtr(cidx)], 1u) - 1u;
+  let idx  = atomicLoad(&scratchA[cellStartPtr(cidx)]) + slot;
+  scratchB[bucketPtr(idx)] = i;
 }
 
 @compute @workgroup_size(256)
@@ -223,6 +283,16 @@ fn buildNbr(@builtin(global_invocation_id) gid : vec3<u32>) {
   let i = wallCount + fi;
   var pi = state_in[i].pos;
   let ci = cell_coord(pi);
+
+  // CANONICAL SELECTION: the neighbour list is the MAXNBR smallest particle
+  // ids inside the 3x3 cell neighbourhood within kernel reach, kept as a
+  // sorted register array as we scan. `gridSort`'s atomic-ticket order varies
+  // between runs AND between devices, so any rule that depends on bucket
+  // order — which candidates make the 48-cap, or which order they accumulate
+  // in — would make the hash unreproducible. (Confirmed when twin engines
+  // diverged the frame the water got crowded: sorted-but-arrival-capped lists
+  // still held different candidate sets.)
+  var keep: array<u32, 48>;
   var nn: u32 = 0u;
 
   for (var dy: i32 = -1; dy <= 1; dy = dy + 1) {
@@ -230,20 +300,44 @@ fn buildNbr(@builtin(global_invocation_id) gid : vec3<u32>) {
       let cy = ci.y + dy; let cx = ci.x + dx;
       if (cx < 0 || cy < 0 || cx >= i32(P.gridW) || cy >= i32(P.gridH)) { continue; }
       let ci2 = u32(cy) * P.gridW + u32(cx);
-      let start = cellStart[ci2];
-      let end   = select(P.n, cellStart[ci2 + 1u], ci2 + 1u < P.cellTotal);
+      let start = atomicLoad(&scratchA[cellStartPtr(ci2)]);
+      let end   = select(P.n, atomicLoad(&scratchA[cellStartPtr(ci2 + 1u)]), ci2 + 1u < P.cellTotal);
       for (var k: u32 = start; k < end; k = k + 1u) {
-        let j = bucketIds[k];
+        let j = scratchB[bucketPtr(k)];
         if (j == i) { continue; }
         let d = vec2<i32>(fp_sub_sat(pi.x, state_in[j].pos.x), fp_sub_sat(pi.y, state_in[j].pos.y));
         let li = lut_index(d);
-        if (li < 0 || nn >= MAXNBR) { continue; }
-        nbr[fi * P.maxNbr + nn] = j;
-        nn = nn + 1u;
+        if (li < 0) { continue; }
+        // Insert j into the ascending `keep` array, evicting the current max
+        // when full. Pure function of the candidate SET, never of scan order.
+        if (nn < MAXNBR) {
+          var b = nn;
+          loop {
+            if (b == 0u) { break; }
+            if (keep[b - 1u] <= j) { break; }
+            keep[b] = keep[b - 1u];
+            b = b - 1u;
+          }
+          keep[b] = j;
+          nn = nn + 1u;
+        } else if (j < keep[MAXNBR - 1u]) {
+          var b = MAXNBR - 1u;
+          loop {
+            if (b == 0u) { break; }
+            if (keep[b - 1u] <= j) { break; }
+            keep[b] = keep[b - 1u];
+            b = b - 1u;
+          }
+          keep[b] = j;
+        }
       }
     }
   }
-  nbrN[fi] = nn;
+
+  for (var a: u32 = 0u; a < nn; a = a + 1u) {
+    nbrBlk[nbrPtr(fi, a)] = keep[a];
+  }
+  nbrBlk[nbrNPtr(fi)] = nn;
 }
 
 // ---------------------------------- PREDICT ---------------------------------
@@ -275,10 +369,10 @@ fn solveA(@builtin(global_invocation_id) gid : vec3<u32>) {
   let i = wallCount + fi;
   let pi = derived[i].pred;
   var rho: i32 = luts[OFF_W];
-  let nn = nbrN[fi];
+  let nn = nbrBlk[nbrNPtr(fi)];
 
   for (var k: u32 = 0u; k < nn; k = k + 1u) {
-    let j = nbr[fi * P.maxNbr + k];
+    let j = nbrBlk[nbrPtr(fi, k)];
     let pj = select(state_in[j].pos, derived[j].pred, j >= wallCount);
     let d = vec2<i32>(fp_sub_sat(pi.x, pj.x), fp_sub_sat(pi.y, pj.y));
     let li = lut_index(d);
@@ -305,10 +399,10 @@ fn solveB(@builtin(global_invocation_id) gid : vec3<u32>) {
   let pi = derived[i].pred;
   let rhoi = derived[i].rho;
   var dpx: i32 = 0; var dpy: i32 = 0;
-  let nn = nbrN[fi];
+  let nn = nbrBlk[nbrNPtr(fi)];
 
   for (var k: u32 = 0u; k < nn; k = k + 1u) {
-    let j = nbr[fi * P.maxNbr + k];
+    let j = nbrBlk[nbrPtr(fi, k)];
     let pj = select(state_in[j].pos, derived[j].pred, j >= wallCount);
     let d = vec2<i32>(fp_sub_sat(pi.x, pj.x), fp_sub_sat(pi.y, pj.y));
     let li = lut_index(d);
@@ -364,10 +458,10 @@ fn finalize(@builtin(global_invocation_id) gid : vec3<u32>) {
   let old  = state_in[i].pos;
   var vel  = vec2<i32>(fp_sub_sat(pred.x, old.x), fp_sub_sat(pred.y, old.y));
 
-  let nn = nbrN[fi];
+  let nn = nbrBlk[nbrNPtr(fi)];
   var dvx: i32 = 0; var dvy: i32 = 0;
   for (var k: u32 = 0u; k < nn; k = k + 1u) {
-    let j = nbr[fi * P.maxNbr + k];
+    let j = nbrBlk[nbrPtr(fi, k)];
     let d = vec2<i32>(fp_sub_sat(pred.x, derived[j].pred.x), fp_sub_sat(pred.y, derived[j].pred.y));
     let li = lut_index(d);
     if (li < 0) { continue; }

@@ -4,14 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SunaEngine — Deterministic Particle Physics</title>
+<link rel="icon" type="image/png" href="assets/logo.png">
 <style>
   :root {
-    --bg: #080812;
-    --surface: #121220;
-    --text: #e8e8f0;
-    --muted: #8888a0;
-    --accent: #4af;
-    --accent2: #f64;
+    /* Palette tuned to the gears mark: deep navy shadow, teal cylinder light. */
+    --bg: #07090f;
+    --surface: #101623;
+    --text: #e9eef6;
+    --muted: #8a94a8;
+    --accent: #37b6e2;
+    --accent2: #ff6a55;
+    --teal-dim: #12506b;
     --radius: 12px;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -32,7 +35,8 @@
     padding: 0 24px; height: 56px;
     display: flex; align-items: center; justify-content: space-between;
   }
-  nav .logo { font-weight: 700; font-size: 18px; letter-spacing: -0.5px; }
+  nav .logo { font-weight: 700; font-size: 18px; letter-spacing: -0.5px; display: flex; align-items: center; gap: 10px; }
+  nav .logo .logo-mark { width: 30px; height: 30px; display: block; filter: drop-shadow(0 0 6px rgba(68,170,255,0.35)); }
   nav .logo span { color: var(--accent); }
   nav .links { display: flex; gap: 20px; align-items: center; }
   nav .links a {
@@ -51,13 +55,37 @@
 
   /* ── Sections ── */
   section { padding: 100px 24px; max-width: 1100px; margin: 0 auto; }
-  .hero { padding-top: 160px; text-align: center; }
+  .hero {
+    padding-top: 160px; text-align: center; position: relative;
+    border-radius: 24px; overflow: hidden; isolation: isolate;
+  }
+  /* Media slot: Darien records a water-splash video; assets/hero.mp4 is picked
+     up automatically when it exists. The gradient stays under it as the
+     fallback and the letterbox for slow loads. The overlay keeps type legible
+     over any footage. */
+  .hero .hero-media {
+    position: absolute; inset: 0; z-index: -2;
+    background:
+      radial-gradient(120% 90% at 50% 0%, rgba(55,182,226,0.16), transparent 55%),
+      radial-gradient(90% 70% at 80% 100%, rgba(18,80,107,0.22), transparent 60%),
+      var(--bg);
+  }
+  .hero .hero-media video {
+    width: 100%; height: 100%; object-fit: cover; opacity: 0.5;
+    display: none; /* shown only if the source actually loads */
+  }
+  .hero .hero-veil {
+    position: absolute; inset: 0; z-index: -1;
+    background: linear-gradient(180deg, rgba(7,9,15,0.55) 0%, rgba(7,9,15,0.78) 55%, rgba(7,9,15,0.92) 100%);
+  }
   .hero h1 { font-size: clamp(40px, 8vw, 72px); font-weight: 800; letter-spacing: -2px; line-height: 1.05; }
-  .hero h1 span { color: var(--accent); }
+  .hero h1 span { color: var(--accent); text-shadow: 0 0 26px rgba(55,182,226,0.35); }
   .hero p {
     margin-top: 24px; font-size: 20px; color: var(--muted); max-width: 600px;
     margin-left: auto; margin-right: auto;
   }
+  .hero .hero-logo { width: 104px; height: 104px; margin: 0 auto 22px;
+    filter: drop-shadow(0 10px 30px rgba(0,0,0,0.55)) drop-shadow(0 0 22px rgba(55,182,226,0.25)); }
   .hero .badges { margin-top: 32px; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
   .hero .badge {
     padding: 8px 18px; border-radius: 20px; font-size: 13px; font-weight: 600;
@@ -183,7 +211,7 @@
 
 <!-- ── Navigation ── -->
 <nav>
-  <div class="logo">🌊 <span>Suna</span>Engine</div>
+  <div class="logo"><img src="assets/logo.png" alt="Suna Engine" class="logo-mark"> <span>Suna</span>Engine</div>
   <div class="links">
     <a href="#demos">Demos</a>
     <a href="#features">Features</a>
@@ -196,11 +224,18 @@
 </nav>
 
 <!-- ── Hero ── -->
-<section class="hero">
+<section class="hero" id="hero">
+  <div class="hero-media" aria-hidden="true">
+    <video id="heroVideo" muted loop playsinline preload="metadata">
+      <source src="assets/hero.mp4" type="video/mp4">
+    </video>
+    <div class="hero-veil"></div>
+  </div>
+  <img src="assets/logo.png" alt="Suna Engine — gears in a depth cylinder" class="hero-logo">
   <h1>The Bit-Exact<br><span>Physics Engine</span></h1>
   <p>
-    SunaEngine is an open-source particle physics engine that guarantees 
-    <strong>bit-identical</strong> simulation output — every time, everywhere, 
+    SunaEngine is an open-source particle physics engine that guarantees
+    <strong>bit-identical</strong> simulation output — every time, everywhere,
     on any WebGPU-capable device.
   </p>
   <div class="badges">
@@ -358,7 +393,8 @@
 
 <!-- ── Engine & Demo Logic ── -->
 <script type="module">
-import { SunaEngine } from './src/engine.js?v=2';
+import { SunaEngine } from './src/engine.js?v=3';
+import { ONE } from './src/common.js?v=3';
 
 // ──────────────────────────────────────────────────────────────────────
 // Demo 1: Deterministic twin waterfalls
@@ -434,14 +470,19 @@ let d2MouseDown = false;
 let d2MouseX = 0, d2MouseY = 0;
 let d2LastMouseX = 0, d2LastMouseY = 0;
 
+// Demo-2 scene is a fixed constellation, not Math.random(): a determinism
+// demo should give every visitor the SAME water, or the replay claim is
+// untestable side by side.
+const D2_DROPS = [
+  [24, 40, 3], [34, 44, 2], [48, 42, 3], [62, 40, 2],
+  [72, 44, 3], [30, 34, 2], [56, 36, 2], [68, 33, 2],
+];
+
 async function d2Init() {
   await d2.init();
-  // Spawn a pool of water
+  // Spawn a pool of water + a fixed set of hanging drops
   d2.spawn(48, 10, 20);
-  // Add some particles scattered around
-  for (let i = 0; i < 8; i++) {
-    d2.spawn(20 + Math.random() * 56, 30 + Math.random() * 15, 2);
-  }
+  for (const [x, y, r] of D2_DROPS) d2.spawn(x, y, r);
   await d2.render();
   d2Snapshots = [d2.snapshot()];
   updateD2Scrub();
@@ -471,15 +512,17 @@ async function d2Loop() {
     return;
   }
 
-  // Push effect: if mouse is down, apply a push impulse to nearby particles
+  // Push effect: if mouse is down, apply a push impulse to nearby particles.
+  // Impulse magnitudes are integers — the state buffer is Int32, and a
+  // fractional push would silently truncate at write time.
   if (d2MouseDown && d2.frame % 3 === 0) {
     const rect = d2canvas.getBoundingClientRect();
     const scaleW = 96 / rect.width;
     const scaleH = 54 / rect.height;
     const wx = (d2MouseX - rect.left) * scaleW;
     const wy = 54 - (d2MouseY - rect.top) * scaleH;
-    const dx = (d2MouseX - d2LastMouseX) * scaleW * ONE * 0.05;
-    const dy = -(d2MouseY - d2LastMouseY) * scaleH * ONE * 0.05;
+    const dx = Math.round((d2MouseX - d2LastMouseX) * scaleW * ONE * 0.05);
+    const dy = Math.round(-(d2MouseY - d2LastMouseY) * scaleH * ONE * 0.05);
     d2.pushParticles(wx, wy, 6, dx, dy);
   }
   d2LastMouseX = d2MouseX;
@@ -509,6 +552,7 @@ window.d2Reset = async () => {
   d2Snapshots = [];
   await d2.reset();
   d2.spawn(48, 10, 20);
+  for (const [x, y, r] of D2_DROPS) d2.spawn(x, y, r);
   d2Snapshots = [d2.snapshot()];
   updateD2Scrub();
   document.getElementById('d2recBtn').textContent = '⏺️ Record';
@@ -580,6 +624,23 @@ d2canvas.addEventListener('touchmove', (e) => {
 d2canvas.addEventListener('touchend', () => { d2MouseDown = false; });
 
 // ──────────────────────────────────────────────────────────────────────
+// Hero video — only revealed if assets/hero.mp4 is actually present.
+// (Darien records a water-splash loop for this slot; absent the file, the
+// gradient is the whole treatment and nothing 404s in view.)
+// ──────────────────────────────────────────────────────────────────────
+(() => {
+  const v = document.getElementById('heroVideo');
+  if (!v) return;
+  v.addEventListener('canplay', () => {
+    v.style.display = 'block';
+    v.play().catch(() => { v.style.display = 'none'; });
+  });
+  v.addEventListener('error', () => { v.style.display = 'none'; }, true);
+  const src = v.querySelector('source');
+  if (src) src.addEventListener('error', () => { v.style.display = 'none'; });
+})();
+
+// ──────────────────────────────────────────────────────────────────────
 // Utility
 // ──────────────────────────────────────────────────────────────────────
 function toast(msg) {
@@ -594,7 +655,7 @@ window.toast = toast;
 // Start
 // ──────────────────────────────────────────────────────────────────────
 Promise.all([d1Init(), d2Init()]).then(() => {
-  console.log('🌊 SunaEngine demos ready');
+  console.log('SunaEngine demos ready');
 }).catch(err => {
   console.error('Demo init failed:', err);
   document.body.innerHTML += `<div style="padding:40px;text-align:center;color:#f66;">

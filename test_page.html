@@ -1,0 +1,61 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>page harness</title>
+<body>
+<script>
+// Load the REAL index.html in an iframe and verify its demos actually run:
+// particles move, the twin hashes match, and no console errors fire.
+async function runProbe() {
+  const out = { checks: [] };
+  const ok = (name, pass, note = '') => out.checks.push({ name, pass: !!pass, note });
+  const iframe = document.createElement('iframe');
+  iframe.src = '/index.html';
+  iframe.style.cssText = 'width:1280px;height:900px;border:0';
+  document.body.appendChild(iframe);
+  await new Promise((res, rej) => {
+    const t = setTimeout(() => rej(new Error('iframe load timeout')), 30000);
+    iframe.onload = () => { clearTimeout(t); res(); };
+  });
+  iframe.contentWindow.__errors = [];
+  iframe.contentWindow.onerror = (msg, src, line, col, err) => {
+    iframe.contentWindow.__errors.push(String(err && err.stack || msg));
+  };
+  // let the demos warm up
+  await new Promise(r => setTimeout(r, 7000));
+  const doc = iframe.contentDocument;
+  const t = (id) => doc.getElementById(id)?.textContent ?? null;
+  const frame1 = t('d1frame'), n1 = t('d1particles');
+  const h1a = t('d1hashA'), h1b = t('d1hashB');
+  const matchShown = iframe.contentWindow.getComputedStyle(doc.getElementById('d1match')).display !== 'none';
+  const frame2 = t('d2frame');
+  const webgpuRequired = [...doc.querySelectorAll('h2')].some(h => h.textContent === 'WebGPU Required');
+
+  ok('d1.advancing', Number(frame1) > 30, `frame=${frame1}`);
+  ok('d1.particlesPresent', Number(n1) > 100, `n=${n1}`);
+  ok('d1.hashesShown', h1a && h1b && h1a !== '—', `${h1a} vs ${h1b}`);
+  ok('d1.matchBadge', matchShown, 'IDENTICAL badge visible');
+  ok('d2.advancing', Number(frame2) > 30, `frame=${frame2}`);
+  ok('page.noWebGPUError', !webgpuRequired, 'no fallback message');
+
+  const f1 = Number(frame1);
+  await new Promise(r => setTimeout(r, 1500));
+  const f2 = Number(t('d1frame'));
+  ok('d1.keepsAdvancing', f2 > f1, `${f1} -> ${f2}`);
+
+  const c2 = doc.getElementById('d2');
+  const r = c2.getBoundingClientRect();
+  const opts = { bubbles: true, clientX: r.left + 200, clientY: r.top + 100, view: iframe.contentWindow };
+  c2.dispatchEvent(new iframe.contentWindow.MouseEvent('mousedown', opts));
+  c2.dispatchEvent(new iframe.contentWindow.MouseEvent('mousemove', { ...opts, clientX: r.left + 280 }));
+  await new Promise(r => setTimeout(r, 900));
+  const errs = iframe.contentWindow.__errors || [];
+  c2.dispatchEvent(new iframe.contentWindow.MouseEvent('mouseup', opts));
+  ok('d2.pushDidNotThrow', !errs.length, errs[0] || 'clean');
+  ok('d2.stillAdvancingAfterPush', Number(t('d2frame')) > Number(frame2), `${frame2} -> ${t('d2frame')}`);
+
+  out.pass = out.checks.every(c => c.pass);
+  return out;
+}
+window.__RESULT__ = runProbe();
+</script>
+</body>
