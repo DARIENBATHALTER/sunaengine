@@ -90,8 +90,6 @@ export class SunaEngine {
       });
 
     this.pipe = {
-      scanBlock:    mkPipe('scanBlock', 256),
-      scanAdd:      mkPipe('scanAdd', 256),
       gridCount:    mkPipe('gridCount', 256),
       gridSort:     mkPipe('gridSort', 256),
       buildNbr:     mkPipe('buildNbr', 256),
@@ -131,7 +129,6 @@ export class SunaEngine {
       add(ONE, y);
       add(domW - ONE, y);
     }
-    this._wallCount = bi;
     this._n = bi;
     this._nFluid = 0;
     this._writeFullState(state);
@@ -248,30 +245,9 @@ export class SunaEngine {
         pass.end();
       }
 
-      // 3. CPU-side prefix sum: read cellCount, compute cellStart, write back
-      // (Simple and correct — avoids complex multi-level GPU scan)
-      {
-        // Copy cellCount to a small staging buffer for readback
-        const stagingSize = cellTotal * 4;
-        const staging = device.createBuffer({
-          size: stagingSize, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ, label: 'staging'
-        });
-        enc.copyBufferToBuffer(buf.cellCount, 0, staging, 0, stagingSize);
-        device.queue.submit([enc.finish()]);
-        
-        // Read back and compute prefix sum
-        const cellMap = this._cellMap || (this._cellMap = new Uint32Array(cellTotal));
-        const startMap = this._startMap || (this._startMap = new Uint32Array(cellTotal + 1));
-        // Need sync readback — use a separate submission
-        // For this we need to wait. Let's use a cached approach:
-        // Actually, let's use a persistent staging buffer and just write the
-        // prefix-summed result back to cellStart each frame.
-        // For now: zero cellStart (neighbor search will scan full list)
-      }
-
-      // Simple fallback: set cellStart[0]=0, cellStart[i]=P.n for all i>0
-      // This makes gridSort put everything in cell 0 and buildNbr scan all particles.
-      // Correct but slower — fine for demo particle counts.
+      // 3. CPU-side prefix sum: simple fallback for demo-size particle counts.
+      // gridSort puts everything in cell 0; buildNbr scans all particles.
+      // O(n²) neighbor search — correct and fast enough for demo sizes.
       {
         const starts = new Uint32Array(cellTotal + 1);
         starts[0] = 0;
@@ -462,7 +438,17 @@ export class SunaEngine {
     this._nFluid = 0;
     this._frame = 0;
     this._lastState = null;
+    // Recreate full-sized buffers in case restore() shrunk them
+    if (this.buf.stateA) this.buf.stateA.destroy();
+    if (this.buf.stateB) this.buf.stateB.destroy();
     const n = this.maxParticles;
+    const ST = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC;
+    this.buf.stateA = this._device.createBuffer({
+      size: Math.max(4, n * PARTICLE_WORDS * 4), usage: ST | GPUBufferUsage.COPY_SRC, label: 'stateA',
+    });
+    this.buf.stateB = this._device.createBuffer({
+      size: Math.max(4, n * PARTICLE_WORDS * 4), usage: ST, label: 'stateB',
+    });
     this._writeFullState(new Int32Array(n * PARTICLE_WORDS));
     this._setupWalls();
   }
