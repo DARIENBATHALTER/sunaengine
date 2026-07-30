@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SunaEngine — Deterministic Particle Physics</title>
+<style>
+  :root {
+    --bg: #080812;
+    --surface: #121220;
+    --text: #e8e8f0;
+    --muted: #8888a0;
+    --accent: #4af;
+    --accent2: #f64;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    overflow-x: hidden;
+  }
+
+  /* ── Navigation ── */
+  nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    backdrop-filter: blur(20px) saturate(180%);
+    background: rgba(8,8,18,0.85);
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    padding: 0 24px; height: 56px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  nav .logo { font-weight: 700; font-size: 18px; letter-spacing: -0.5px; }
+  nav .logo span { color: var(--accent); }
+  nav .links { display: flex; gap: 20px; align-items: center; }
+  nav .links a {
+    color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 500;
+    transition: color 0.2s;
+  }
+  nav .links a:hover { color: var(--text); }
+  nav .links .gh {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 14px; border-radius: 20px;
+    border: 1px solid rgba(255,255,255,0.12);
+    color: var(--text); font-weight: 600; font-size: 13px;
+    transition: border-color 0.2s, background 0.2s;
+  }
+  nav .links .gh:hover { border-color: rgba(255,255,255,0.3); background: rgba(255,255,255,0.05); }
+
+  /* ── Sections ── */
+  section { padding: 100px 24px; max-width: 1100px; margin: 0 auto; }
+  .hero { padding-top: 160px; text-align: center; }
+  .hero h1 { font-size: clamp(40px, 8vw, 72px); font-weight: 800; letter-spacing: -2px; line-height: 1.05; }
+  .hero h1 span { color: var(--accent); }
+  .hero p {
+    margin-top: 24px; font-size: 20px; color: var(--muted); max-width: 600px;
+    margin-left: auto; margin-right: auto;
+  }
+  .hero .badges { margin-top: 32px; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .hero .badge {
+    padding: 8px 18px; border-radius: 20px; font-size: 13px; font-weight: 600;
+    border: 1px solid rgba(255,255,255,0.1); color: var(--muted);
+  }
+  .hero .badge.hl { border-color: var(--accent); color: var(--accent); }
+
+  /* ── Demo Section ── */
+  .demo-section { padding: 60px 24px; }
+  .demo-section h2 {
+    font-size: 32px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 8px;
+  }
+  .demo-section .subtitle { color: var(--muted); font-size: 16px; margin-bottom: 32px; }
+  
+  .demo-card {
+    background: var(--surface); border-radius: var(--radius);
+    border: 1px solid rgba(255,255,255,0.06);
+    overflow: hidden;
+  }
+  .demo-card .canvas-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: rgba(255,255,255,0.04);
+  }
+  .demo-card .canvas-row.single { grid-template-columns: 1fr; }
+  .demo-card canvas {
+    display: block; width: 100%; aspect-ratio: 16/9; background: #080812;
+    cursor: crosshair;
+  }
+  .demo-card .controls {
+    padding: 16px 20px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    border-top: 1px solid rgba(255,255,255,0.06);
+  }
+  .demo-card .hash-display {
+    padding: 12px 20px; border-top: 1px solid rgba(255,255,255,0.06);
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 12px; color: var(--muted);
+    display: flex; gap: 20px; flex-wrap: wrap;
+  }
+  .demo-card .hash-display .hash-label { font-weight: 600; color: var(--text); }
+  .demo-card .hash-display .hash-match { color: #4f8; font-weight: 600; }
+  .demo-card .hash-display .hash-diff { color: var(--accent2); font-weight: 600; }
+  
+  /* Buttons & Controls */
+  button, .btn {
+    padding: 8px 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.15);
+    background: rgba(255,255,255,0.05); color: var(--text); font-size: 13px;
+    font-weight: 600; cursor: pointer; transition: all 0.15s;
+    font-family: inherit;
+  }
+  button:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.25); }
+  button.accent { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 700; }
+  button.accent:hover { filter: brightness(1.15); }
+  input[type="range"] {
+    -webkit-appearance: none; appearance: none; background: rgba(255,255,255,0.1);
+    height: 6px; border-radius: 3px; outline: none; min-width: 120px;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%;
+    background: var(--accent); cursor: pointer; border: none;
+  }
+
+  /* ── Features Grid ── */
+  .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+  .feature {
+    background: var(--surface); border: 1px solid rgba(255,255,255,0.06);
+    border-radius: var(--radius); padding: 28px;
+  }
+  .feature .icon { font-size: 32px; margin-bottom: 12px; }
+  .feature h3 { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+  .feature p { color: var(--muted); font-size: 14px; }
+
+  /* ── Specs Bar ── */
+  .specs {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 0;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .spec {
+    padding: 20px; text-align: center;
+    border-right: 1px solid rgba(255,255,255,0.06);
+    background: var(--surface);
+  }
+  .spec:last-child { border-right: none; }
+  .spec .value { font-size: 28px; font-weight: 800; color: var(--accent); }
+  .spec .label { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+  /* ── Footer ── */
+  footer {
+    padding: 60px 24px; text-align: center;
+    border-top: 1px solid rgba(255,255,255,0.06);
+  }
+  footer .links { display: flex; gap: 20px; justify-content: center; margin-bottom: 16px; }
+  footer .links a { color: var(--muted); text-decoration: none; font-size: 14px; }
+  footer .links a:hover { color: var(--text); }
+  footer .copy { color: var(--muted); font-size: 13px; }
+  footer .copy a { color: var(--accent); text-decoration: none; }
+
+  /* ── Toast ── */
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    padding: 10px 20px; border-radius: 20px; background: var(--surface);
+    border: 1px solid rgba(255,255,255,0.1); font-size: 13px; font-weight: 600;
+    z-index: 200; pointer-events: none; opacity: 0; transition: opacity 0.3s;
+  }
+  .toast.show { opacity: 1; }
+
+  /* ── Responsive ── */
+  @media (max-width: 768px) {
+    .demo-card .canvas-row { grid-template-columns: 1fr; }
+    section { padding: 60px 16px; }
+    .hero { padding-top: 120px; }
+    .hero h1 { font-size: 36px; }
+    .features { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Navigation ── -->
+<nav>
+  <div class="logo">☀️ <span>Suna</span>Engine</div>
+  <div class="links">
+    <a href="#demos">Demos</a>
+    <a href="#features">Features</a>
+    <a href="#specs">Specs</a>
+    <a href="https://github.com/DARIENBATHALTER/sunaengine" class="gh" target="_blank" rel="noopener">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      GitHub
+    </a>
+  </div>
+</nav>
+
+<!-- ── Hero ── -->
+<section class="hero">
+  <h1>The Bit-Exact<br><span>Physics Engine</span></h1>
+  <p>
+    SunaEngine is an open-source particle physics engine that guarantees 
+    <strong>bit-identical</strong> simulation output — every time, everywhere, 
+    on any WebGPU-capable device.
+  </p>
+  <div class="badges">
+    <span class="badge hl">WebGPU</span>
+    <span class="badge">128-bit State Hash</span>
+    <span class="badge">Integer-Only Math</span>
+    <span class="badge">Zero Floating Point</span>
+    <span class="badge">MIT Licensed</span>
+  </div>
+</section>
+
+<!-- ── Demo 1: Deterministic Waterfall ── -->
+<section class="demo-section" id="demos">
+  <h2>Demo 1 — Deterministic Twin</h2>
+  <p class="subtitle">
+    Two identical water columns, seeded from the same bytes. Watch them fall 
+    and settle — their 256-bit state hash stays <strong>byte-for-byte identical</strong> 
+    through every frame.
+  </p>
+  <div class="demo-card" id="demo1">
+    <div class="canvas-row">
+      <canvas id="d1a" width="640" height="360"></canvas>
+      <canvas id="d1b" width="640" height="360"></canvas>
+    </div>
+    <div class="hash-display" id="d1hash">
+      <span class="hash-label">Hash:</span> <span id="d1hashA">—</span>
+      <span class="hash-label">Hash:</span> <span id="d1hashB">—</span>
+      <span class="hash-match" id="d1match" style="display:none;">✓ IDENTICAL</span>
+      <span class="hash-diff" id="d1diff" style="display:none;">✗ DIVERGED</span>
+    </div>
+    <div class="controls">
+      <button onclick="d1Reset()">🔄 Reset</button>
+      <button onclick="d1DropMore()">💧 Drop More</button>
+      <span style="color:var(--muted);font-size:12px;margin-left:auto;">
+        Frame: <span id="d1frame">0</span> &nbsp; Particles: <span id="d1particles">0</span>
+      </span>
+    </div>
+  </div>
+</section>
+
+<!-- ── Demo 2: Push & Reverse ── -->
+<section class="demo-section">
+  <h2>Demo 2 — Push &amp; Rewind</h2>
+  <p class="subtitle">
+    Push water around with your mouse. Use the slider to scrub backward and forward 
+    through the simulation. Every frame is <strong>deterministic</strong> — the same 
+    inputs always produce the exact same result.
+  </p>
+  <div class="demo-card" id="demo2">
+    <div class="canvas-row single">
+      <canvas id="d2" width="960" height="540"></canvas>
+    </div>
+    <div class="hash-display">
+      <span class="hash-label">Frame:</span> <span id="d2frame">0</span>
+      <span class="hash-label">Hash:</span> <span id="d2hash">—</span>
+      <span class="hash-label">Snapshots:</span> <span id="d2snaps">0</span>
+    </div>
+    <div class="controls">
+      <button onclick="d2Reset()">🔄 Reset Pool</button>
+      <button onclick="d2Record()" id="d2recBtn">⏺️ Record</button>
+      <button onclick="d2Play()" id="d2playBtn">▶️ Replay</button>
+      <input type="range" id="d2scrub" min="0" max="0" value="0" style="flex:1;min-width:200px;"
+             oninput="d2Scrub(this.value)">
+      <span style="color:var(--muted);font-size:12px;">
+        Frame <span id="d2scrubVal">0</span>/<span id="d2scrubMax">0</span>
+      </span>
+    </div>
+  </div>
+</section>
+
+<!-- ── Features ── -->
+<section id="features">
+  <h2 style="font-size:32px;font-weight:700;margin-bottom:8px;">Why SunaEngine?</h2>
+  <p class="subtitle">Most physics engines use floating-point math that varies between devices. SunaEngine doesn't.</p>
+  <div class="features" style="margin-top:32px;">
+    <div class="feature">
+      <div class="icon">🔒</div>
+      <h3>Bit-Exact Determinism</h3>
+      <p>
+        Integer-only fixed-point arithmetic eliminates floating-point variance. 
+        Same input → same 256-bit hash, guaranteed, on any GPU.
+      </p>
+    </div>
+    <div class="feature">
+      <div class="icon">⚡</div>
+      <h3>WebGPU Native</h3>
+      <p>
+        Runs compute shaders directly on the GPU for maximum throughput. 
+        Thousands of particles at real-time frame rates.
+      </p>
+    </div>
+    <div class="feature">
+      <div class="icon">📐</div>
+      <h3>Position-Based Dynamics</h3>
+      <p>
+        The PBF solver handles density constraints, viscosity, cohesion, 
+        and surface tension — all in exact integer math.
+      </p>
+    </div>
+    <div class="feature">
+      <div class="icon">🪶</div>
+      <h3>Minimal & Focused</h3>
+      <p>
+        No temperature, no reactions, no material presets. Just the pure 
+        solver core, ready to build on.
+      </p>
+    </div>
+    <div class="feature">
+      <div class="icon">🔄</div>
+      <h3>Replay & Rewind</h3>
+      <p>
+        Record input sequences and replay them deterministically. 
+        Perfect for networked games, replays, and verification.
+      </p>
+    </div>
+    <div class="feature">
+      <div class="icon">🌐</div>
+      <h3>Cross-Platform</h3>
+      <p>
+        Runs in any browser with WebGPU support. Chrome, Edge, Firefox Nightly — 
+        same bytes, same hash, everywhere.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ── Specs ── -->
+<section id="specs">
+  <h2 style="font-size:32px;font-weight:700;margin-bottom:24px;">Engineering Specs</h2>
+  <div class="specs">
+    <div class="spec"><div class="value">Q16.16</div><div class="label">Fixed-Point Format</div></div>
+    <div class="spec"><div class="value">i32</div><div class="label">Arithmetic Type</div></div>
+    <div class="spec"><div class="value">256-bit</div><div class="label">State Hash (Murmur3)</div></div>
+    <div class="spec"><div class="value">RNE</div><div class="label">Rounding (Half-to-Even)</div></div>
+    <div class="spec"><div class="value">8 KiB</div><div class="label">Per-Particle State</div></div>
+    <div class="spec"><div class="value">2.5 wu</div><div class="label">Kernel Radius</div></div>
+  </div>
+</section>
+
+<!-- ── Footer ── -->
+<footer>
+  <div class="links">
+    <a href="https://github.com/DARIENBATHALTER/sunaengine" target="_blank" rel="noopener">GitHub</a>
+    <a href="https://github.com/DARIENBATHALTER/sunaengine/blob/main/README.md" target="_blank" rel="noopener">Docs</a>
+    <a href="https://github.com/DARIENBATHALTER/sunaengine/issues" target="_blank" rel="noopener">Issues</a>
+    <a href="https://github.com/DARIENBATHALTER/sunaengine/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
+  </div>
+  <p class="copy">
+    SunaEngine · Open Source · Built by <a href="https://github.com/DARIENBATHALTER" target="_blank" rel="noopener">Darien Bathalter</a>
+  </p>
+</footer>
+
+<!-- ── Toast ── -->
+<div class="toast" id="toast"></div>
+
+<!-- ── Engine & Demo Logic ── -->
+<script type="module">
+import { SunaEngine } from './src/engine.js';
+
+// ──────────────────────────────────────────────────────────────────────
+// Demo 1: Deterministic twin waterfalls
+// ──────────────────────────────────────────────────────────────────────
+const d1a = new SunaEngine(document.getElementById('d1a'), { w: 64, h: 36, maxParticles: 4096 });
+const d1b = new SunaEngine(document.getElementById('d1b'), { w: 64, h: 36, maxParticles: 4096 });
+
+async function d1Init() {
+  await d1a.init();
+  await d1b.init();
+
+  // Seed both engines with identical initial state
+  d1a.spawn(20, 28, 4);
+  d1a.spawn(44, 28, 4);
+  d1b.spawn(20, 28, 4);
+  d1b.spawn(44, 28, 4);
+
+  d1Loop();
+}
+
+let d1Running = true;
+let d1AnimId;
+
+async function d1Loop() {
+  if (!d1Running) return;
+
+  d1a.step();
+  d1b.step();
+
+  await Promise.all([d1a.render(), d1b.render()]);
+
+  const hA = d1a.getHash();
+  const hB = d1b.getHash();
+  document.getElementById('d1hashA').textContent = hA.slice(0, 32) + '…';
+  document.getElementById('d1hashB').textContent = hB.slice(0, 32) + '…';
+  document.getElementById('d1frame').textContent = d1a.frame;
+  document.getElementById('d1particles').textContent = d1a.n;
+
+  const match = hA === hB;
+  document.getElementById('d1match').style.display = match ? 'inline' : 'none';
+  document.getElementById('d1diff').style.display = match ? 'none' : 'inline';
+
+  d1AnimId = requestAnimationFrame(d1Loop);
+}
+
+window.d1Reset = async () => {
+  await d1a.reset();
+  await d1b.reset();
+  d1a.spawn(20, 28, 4);
+  d1a.spawn(44, 28, 4);
+  d1b.spawn(20, 28, 4);
+  d1b.spawn(44, 28, 4);
+};
+
+window.d1DropMore = () => {
+  d1a.spawn(12, 33, 2);
+  d1b.spawn(12, 33, 2);
+  d1a.spawn(52, 33, 2);
+  d1b.spawn(52, 33, 2);
+};
+
+// ──────────────────────────────────────────────────────────────────────
+// Demo 2: Push & Rewind
+// ──────────────────────────────────────────────────────────────────────
+const d2canvas = document.getElementById('d2');
+const d2 = new SunaEngine(d2canvas, { w: 96, h: 54, maxParticles: 8192 });
+
+let d2Snapshots = [];
+let d2Recording = false;
+let d2Replaying = false;
+let d2ReplayIdx = 0;
+let d2MouseDown = false;
+let d2MouseX = 0, d2MouseY = 0;
+
+async function d2Init() {
+  await d2.init();
+  // Spawn a pool of water
+  d2.spawn(48, 10, 20);
+  // Add some particles scattered around
+  for (let i = 0; i < 8; i++) {
+    d2.spawn(20 + Math.random() * 56, 30 + Math.random() * 15, 2);
+  }
+  await d2.render();
+  d2Snapshots = [d2.snapshot()];
+  updateD2Scrub();
+  d2Loop();
+}
+
+function updateD2Scrub() {
+  const max = d2Snapshots.length - 1;
+  document.getElementById('d2scrub').max = Math.max(0, max);
+  document.getElementById('d2scrubMax').textContent = max;
+}
+
+let d2AnimId;
+
+async function d2Loop() {
+  if (d2Replaying && d2Snapshots.length > 0) {
+    d2ReplayIdx = Math.min(d2ReplayIdx + 1, d2Snapshots.length - 1);
+    d2.restore(d2Snapshots[d2ReplayIdx]);
+    await d2.render();
+    const h = d2.getHash();
+    document.getElementById('d2frame').textContent = d2ReplayIdx;
+    document.getElementById('d2hash').textContent = h.slice(0, 32) + '…';
+    document.getElementById('d2scrub').value = d2ReplayIdx;
+    document.getElementById('d2scrubVal').textContent = d2ReplayIdx;
+    document.getElementById('d2snaps').textContent = d2Snapshots.length;
+    d2AnimId = requestAnimationFrame(d2Loop);
+    return;
+  }
+
+  // Push effect: if mouse is down, apply a push force to nearby particles
+  if (d2MouseDown) {
+    // Read back state and push particles near the cursor
+    const rect = d2canvas.getBoundingClientRect();
+    const scaleW = 96 / rect.width;
+    const scaleH = 54 / rect.height;
+    const wx = (d2MouseX - rect.left) * scaleW;
+    const wy = 54 - (d2MouseY - rect.top) * scaleH;
+
+    // Spawn a temporary push
+    d2.spawn(wx, wy, 1.5);
+  }
+
+  d2.step();
+  await d2.render();
+
+  const h = d2.getHash();
+  document.getElementById('d2frame').textContent = d2.frame;
+  document.getElementById('d2hash').textContent = h.slice(0, 32) + '…';
+  document.getElementById('d2snaps').textContent = d2Snapshots.length;
+
+  // Auto-record snapshot every N frames
+  if (d2Recording && d2.frame % 3 === 0) {
+    d2Snapshots.push(d2.snapshot());
+    updateD2Scrub();
+  }
+
+  d2AnimId = requestAnimationFrame(d2Loop);
+}
+
+window.d2Reset = async () => {
+  d2Recording = false;
+  d2Replaying = false;
+  d2ReplayIdx = 0;
+  d2Snapshots = [];
+  await d2.reset();
+  d2.spawn(48, 10, 20);
+  d2Snapshots = [d2.snapshot()];
+  updateD2Scrub();
+  document.getElementById('d2recBtn').textContent = '⏺️ Record';
+  document.getElementById('d2playBtn').textContent = '▶️ Replay';
+};
+
+window.d2Record = () => {
+  d2Recording = !d2Recording;
+  d2Replaying = false;
+  document.getElementById('d2recBtn').textContent = d2Recording ? '⏹️ Stop' : '⏺️ Record';
+  if (d2Recording) {
+    d2Snapshots = [d2.snapshot()];
+    updateD2Scrub();
+  }
+};
+
+window.d2Play = () => {
+  if (d2Snapshots.length <= 1) {
+    toast('Record some frames first!');
+    return;
+  }
+  d2Replaying = !d2Replaying;
+  d2ReplayIdx = 0;
+  d2Recording = false;
+  document.getElementById('d2playBtn').textContent = d2Replaying ? '⏹️ Stop' : '▶️ Replay';
+  document.getElementById('d2recBtn').textContent = '⏺️ Record';
+};
+
+window.d2Scrub = (val) => {
+  const idx = parseInt(val);
+  if (d2Snapshots[idx]) {
+    d2Replaying = false;
+    d2.restore(d2Snapshots[idx]);
+    d2.render();
+    document.getElementById('d2scrubVal').textContent = idx;
+    document.getElementById('d2frame').textContent = idx;
+  }
+};
+
+// Mouse events for push
+d2canvas.addEventListener('mousedown', (e) => {
+  d2MouseDown = true;
+  const rect = d2canvas.getBoundingClientRect();
+  d2MouseX = e.clientX;
+  d2MouseY = e.clientY;
+});
+d2canvas.addEventListener('mousemove', (e) => {
+  d2MouseX = e.clientX;
+  d2MouseY = e.clientY;
+});
+d2canvas.addEventListener('mouseup', () => { d2MouseDown = false; });
+d2canvas.addEventListener('mouseleave', () => { d2MouseDown = false; });
+
+// Touch events
+d2canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  d2MouseDown = true;
+  d2MouseX = e.touches[0].clientX;
+  d2MouseY = e.touches[0].clientY;
+});
+d2canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  d2MouseX = e.touches[0].clientX;
+  d2MouseY = e.touches[0].clientY;
+});
+d2canvas.addEventListener('touchend', () => { d2MouseDown = false; });
+
+// ──────────────────────────────────────────────────────────────────────
+// Utility
+// ──────────────────────────────────────────────────────────────────────
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2000);
+}
+window.toast = toast;
+
+// ──────────────────────────────────────────────────────────────────────
+// Start
+// ──────────────────────────────────────────────────────────────────────
+Promise.all([d1Init(), d2Init()]).then(() => {
+  console.log('☀️ SunaEngine demos ready');
+}).catch(err => {
+  console.error('Demo init failed:', err);
+  document.body.innerHTML += `<div style="padding:40px;text-align:center;color:#f66;">
+    <h2>WebGPU Required</h2>
+    <p>${err.message}</p>
+    <p style="margin-top:16px;">Please use Chrome 113+, Edge 113+, or Firefox Nightly with <code>dom.webgpu.enabled</code>.</p>
+  </div>`;
+});
+</script>
+</body>
+</html>
