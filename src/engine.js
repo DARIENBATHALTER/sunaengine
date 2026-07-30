@@ -82,10 +82,32 @@ export class SunaEngine {
     // Write LUTs
     device.queue.writeBuffer(this.buf.luts, 0, new Int32Array(lutImg));
 
+    // Explicit bind-group layout shared by all passes (avoids 'auto' layout mismatches)
+    this._bindGroupLayout = device.createBindGroupLayout({
+      entries: [
+        { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+        { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+        { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+        { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+        { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+        { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+        { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+        { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+        { binding: 8, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+        { binding: 9, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+        { binding: 10, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+        { binding: 11, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+        { binding: 12, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+      ],
+    });
+    this._pipelineLayout = device.createPipelineLayout({
+      bindGroupLayouts: [this._bindGroupLayout],
+    });
+
     // Create pipelines
     const mkPipe = (entry) =>
       device.createComputePipeline({
-        layout: 'auto',
+        layout: this._pipelineLayout,
         label: entry,
         compute: { module, entryPoint: entry },
       });
@@ -216,7 +238,7 @@ export class SunaEngine {
       const enc = device.createCommandEncoder();
 
       const makeBG = (sin, sout) => device.createBindGroup({
-        layout: pipe.gridCount.getBindGroupLayout(0),
+        layout: this._bindGroupLayout,
         entries: [
           { binding: 0, resource: { buffer: buf.params } },
           { binding: 1, resource: { buffer: sin } },
