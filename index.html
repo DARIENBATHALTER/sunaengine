@@ -17,13 +17,16 @@
 <link rel="icon" href="icon-64.png">
 <style>
   :root {
-    --paper:  #f7f5f0;
-    --panel:  #fdfcfa;
-    --ink:    #1c1b18;
-    --ink-2:  #57534a;
-    --hair:   #d9d4c8;
-    --accent: #a63c17;   /* the one accent */
-    --bad:    #b3261e;
+    color-scheme: dark;
+    /* Darien 2026-07-31: the journal voice on the original's dark ground.
+       Paper matches the hero video's field so the video can dissolve into it. */
+    --paper:  #0a0e16;
+    --panel:  #111726;
+    --ink:    #eae7de;
+    --ink-2:  #a29d90;
+    --hair:   #242c3d;
+    --accent: #d4552a;   /* the one accent, lifted for dark contrast */
+    --bad:    #e0554b;
     --serif: Charter, 'Iowan Old Style', Georgia, 'Times New Roman', serif;
     --sans:  -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
     --mono:  ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
@@ -40,6 +43,23 @@
   .figure { max-width: 68rem;  margin: 0 auto; padding: 0 1.25rem; }
 
   header { padding: 3.2rem 0 0; }
+  /* The hero: the liquid recording breathes behind the opening prose, then
+     dissolves into the page's own ground before the text gets dense. */
+  .hero { position: relative; overflow: hidden; }
+  .hero video, .hero .poster {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: cover; opacity: 0.55; z-index: 0;
+  }
+  .hero .poster { background: url('assets/hero_poster.jpg') center/cover; }
+  .hero .shade {
+    position: absolute; inset: 0; z-index: 1;
+    background: linear-gradient(180deg, rgba(10,14,22,0.30) 0%,
+                rgba(10,14,22,0.62) 55%, var(--paper) 96%);
+  }
+  .hero header { position: relative; z-index: 2; }
+  .brand { display: flex; align-items: center; gap: 0.9rem; }
+  .brand img { width: 46px; height: 46px; display: block;
+               filter: drop-shadow(0 2px 10px rgba(0,0,0,0.5)); }
   .wordmark {
     font: 600 0.82rem/1 var(--sans);
     letter-spacing: 0.34em;
@@ -240,7 +260,8 @@
   section.text p + p { margin-top: 0.7rem; }
   code {
     font: 400 0.86em var(--mono);
-    background: #edeae2;
+    background: var(--panel);
+    border: 1px solid var(--hair);
     padding: 0.08em 0.32em;
     border-radius: 2px;
   }
@@ -279,8 +300,18 @@
 </head>
 <body>
 
+<div class="hero">
+<div class="poster" aria-hidden="true"></div>
+<video id="heroVid" autoplay muted loop playsinline preload="metadata"
+       poster="assets/hero_poster.jpg" aria-hidden="true">
+  <source src="assets/hero.mp4" type="video/mp4">
+</video>
+<div class="shade" aria-hidden="true"></div>
 <header class="prose">
-  <div class="wordmark"><b>Suna</b>Engine</div>
+  <div class="brand">
+    <img src="assets/logo.png" alt="SunaEngine">
+    <div class="wordmark"><b>Suna</b>Engine</div>
+  </div>
   <h1>Every mainstream physics engine drifts. This one cannot.</h1>
   <p class="lead">
     Run the same simulation on two machines and floating-point arithmetic will,
@@ -302,6 +333,23 @@
     <span>pauses off-screen</span>
   </div>
 </header>
+</div><!-- /hero -->
+<script>
+// Hero video power manners: never spin the GPU for pixels nobody can see,
+// and never animate for a viewer who asked not to be animated at.
+(() => {
+  const v = document.getElementById('heroVid');
+  if (!v) return;
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) { v.remove(); return; }
+  v.play().catch(() => {});           // muted autoplay may still be denied; the poster stands in
+  new IntersectionObserver((es) => {
+    for (const e of es) e.isIntersecting ? v.play().catch(() => {}) : v.pause();
+  }).observe(v);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) v.pause(); else v.play().catch(() => {});
+  });
+})();
+</script>
 
 <hr class="rule">
 
