@@ -339,6 +339,7 @@
   <div class="navLinks">
     <a href="#fig1">The Twins</a>
     <a href="#fig2">Smooth Rewind</a>
+    <a href="#uses">Uses</a>
     <a href="#how">How</a>
     <a class="gh" href="https://github.com/DARIENBATHALTER/sunaengine">GitHub</a>
   </div>
@@ -355,17 +356,19 @@
   <h1><span class="l1">Every physics engine drifts.</span><br>
       <span class="l2">This one cannot.</span></h1>
   <p class="lead">
-    Run the same simulation on two machines and floating-point arithmetic will,
-    sooner or later, disagree — different GPUs, drivers, and compilers round
-    differently, and chaos amplifies the last bit into a different world.
-    SunaEngine's solver contains no floating point at all. Every quantity is
-    signed 32-bit fixed point; every operation rounds half-to-even and
-    saturates on overflow. Same inputs, same bits, on any WebGPU device.
+    SunaEngine is an open-source particle physics engine that guarantees
+    <strong>bit-identical</strong> simulation output — every time, everywhere,
+    on any WebGPU-capable device. Not "close enough to look the same":
+    the same 256-bit state hash, on your laptop and on a stranger's GPU.
   </p>
   <p class="lead">
-    That claim is checkable, so this page checks it — live, on your GPU.
-    The 64 hex digits under each simulation are a 256-bit digest of the
-    <em>entire</em> particle state, recomputed as it runs.
+    No mainstream engine can promise that, because floating-point rounds
+    differently across GPUs and drivers, and chaos amplifies the last bit into
+    a different world. SunaEngine's solver contains no floating point at all —
+    integer fixed-point throughout — which is what makes the guarantee
+    possible. This page does not ask you to take any of it on faith: the 64
+    hex digits under each simulation are a live digest of the <em>entire</em>
+    particle state, recomputed as it runs.
   </p>
   <div class="chips">
     <span class="hot">WebGPU</span>
@@ -494,6 +497,39 @@
 <hr class="rule">
 
 <!-- ================= HOW ================= -->
+<section class="prose text" id="uses">
+  <h2>What a bit-exact engine is for</h2>
+  <p>
+    Determinism is not a benchmark number — it is a different set of things
+    you are allowed to build:
+  </p>
+  <p><strong>Multiplayer without state sync.</strong> When every machine
+    computes identical bits, peers exchange <em>inputs</em> instead of world
+    snapshots — a physics world's worth of state in a few bytes per frame,
+    with divergence impossible rather than corrected-for.</p>
+  <p><strong>Replays that are proofs.</strong> A recorded session is a
+    starting state plus an input journal, a few kilobytes. Its final hash can
+    be re-derived by anyone, so a leaderboard entry or a challenge run is
+    <em>verifiable</em> — there is nothing to edit that the hash will not
+    catch. Figure 2's byte-identity check is this property, live.</p>
+  <p><strong>Smooth rewind.</strong> Chaos makes particle fluids
+    irreversible in floating point; with exact state and an input journal,
+    time is just an index — scrub it in either direction.</p>
+  <p><strong>Reproducible simulation.</strong> A published result can be
+    cited as (scene, inputs, hash) and re-derived exactly on any device —
+    the difference between "our simulation showed" and "run it yourself."
+    The same property makes CI trivial: the hash is a regression oracle
+    that fails loudly on a single changed bit.</p>
+  <p><strong>Training data for world models.</strong> Physics rollouts that
+    are perfectly labeled and perfectly repeatable: a corpus regenerates
+    bit-for-bit from seeds and schedules instead of being stored, and an
+    evaluation suite pins its ground truth to hashes instead of tolerances.</p>
+  <p><strong>Beyond 2D.</strong> SunaEngine simulates in 2D today, but the
+    load-bearing techniques — fixed-point PBF, round-half-to-even force
+    antisymmetry, order-independent integer accumulation — are
+    dimension-agnostic, and the spec documents them for reuse.</p>
+</section>
+
 <section class="prose text" id="how">
   <h2>How</h2>
 
