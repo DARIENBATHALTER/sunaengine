@@ -929,6 +929,17 @@ async function autotest() {
   return R;
 }
 
+// ---------------------------------------------------------------------------
+// ?gate=1 — state hook for test/site_gates.mjs (the UI-path gates). Exposes
+// LIVE references (never copies) so the gates can assert substeps and counts
+// against the same objects the page runs on, and can perturb ONE twin for
+// Figure 1's negative control (the DOM must then show DIVERGENCE — proving
+// the equality display is a live computation). Inert without the query param.
+// ---------------------------------------------------------------------------
+if (new URLSearchParams(location.search).has('gate')) {
+  window.__GATE__ = { T, P, wu, makeDroplet };
+}
+
 if (AUTOTEST) {
   window.__RESULT__ = autotest();
 } else {
