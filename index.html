@@ -402,6 +402,10 @@
   const v = document.getElementById('heroVid');
   if (!v) return;
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) { v.remove(); return; }
+  v.addEventListener('playing', () => {
+    const p = document.querySelector('.hero .poster');
+    if (p) p.style.display = 'none';  // the static frame must not ghost under moving water
+  }, { once: true });
   v.play().catch(() => {});           // muted autoplay may still be denied; the poster stands in
   new IntersectionObserver((es) => {
     for (const e of es) e.isIntersecting ? v.play().catch(() => {}) : v.pause();
