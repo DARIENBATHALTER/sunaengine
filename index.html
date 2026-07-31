@@ -39,7 +39,7 @@
   .prose  { max-width: 42rem;  margin: 0 auto; padding: 0 1.25rem; }
   .figure { max-width: 68rem;  margin: 0 auto; padding: 0 1.25rem; }
 
-  header { padding: 4.5rem 0 0; }
+  header { padding: 3.2rem 0 0; }
   .wordmark {
     font: 600 0.82rem/1 var(--sans);
     letter-spacing: 0.34em;
@@ -50,7 +50,7 @@
   h1 {
     font: 400 clamp(1.9rem, 4.6vw, 2.9rem)/1.18 var(--serif);
     letter-spacing: -0.012em;
-    margin: 1.1rem 0 1.4rem;
+    margin: 0.9rem 0 1.2rem;
     max-width: 30ch;
   }
   .lead { font-size: 1.13rem; color: var(--ink); }
@@ -65,7 +65,7 @@
   .env-note span { white-space: nowrap; }
   .env-note span + span::before { content: '·'; margin: 0 0.6em; color: var(--hair); }
 
-  hr.rule { border: 0; border-top: 1px solid var(--hair); margin: 3.2rem auto; max-width: 68rem; }
+  hr.rule { border: 0; border-top: 1px solid var(--hair); margin: 2.6rem auto; max-width: 68rem; }
 
   h2 {
     font: 600 0.82rem/1.4 var(--sans);
@@ -110,13 +110,14 @@
   .panel-label .np { font-family: var(--mono); letter-spacing: 0; text-transform: none; }
 
   .hash {
-    font: 400 0.76rem/1.5 var(--mono);
+    font: 400 0.8rem/1.5 var(--mono);
     letter-spacing: 0.045em;
+    white-space: pre-wrap;      /* digests arrive pre-broken at the 32-char lane split */
     word-break: break-all;
     color: var(--ink);
     border-left: 2px solid var(--hair);
     padding-left: 0.6rem;
-    min-height: 2.4em;
+    min-height: 3em;
     transition: border-color 0.3s;
   }
   .hash.agree    { border-left-color: var(--accent); }
@@ -134,6 +135,7 @@
   .verdict .dot { color: var(--accent); }
   .verdict.bad  { color: var(--bad); }
   .verdict .sub { display: block; letter-spacing: 0.04em; text-transform: none;
+                  white-space: pre-wrap; word-break: break-all;
                   font-family: var(--mono); font-size: 0.72rem; color: var(--ink-2); }
 
   /* ---- controls ------------------------------------------------------- */
@@ -169,6 +171,8 @@
   .hint {
     font: 400 0.78rem/1.5 var(--sans);
     color: var(--ink-2);
+    max-width: 46ch;
+    text-align: left;
   }
 
   /* ---- demo 2 -------------------------------------------------------- */
@@ -313,12 +317,6 @@
       the velocity field (red one way, blue the other), so you can watch the two
       vortex systems match, eddy for eddy.
     </p>
-    <p>
-      Hold <em>drop more</em> and water falls for as long as you hold. Your
-      press is quantized to integer substep indices and the resulting schedule
-      is handed to both sims identically — so they stay bit-exact through
-      everything you do.
-    </p>
   </div>
 
   <div id="twinsHost">
@@ -337,7 +335,8 @@
     <div class="verdict" id="twinsVerdict"></div>
     <div class="controls">
       <button class="hold" id="dropTwins">Drop more — hold</button>
-      <span class="hint">identical schedule &rarr; both sims</span>
+      <span class="hint">water falls while you hold; your press is quantized to substep
+        indices and fed to both sims identically, so they stay bit-exact</span>
     </div>
   </div>
 </section>
@@ -382,7 +381,8 @@
     <div class="controls">
       <button class="hold" id="dropPool">Drop more — hold</button>
       <button class="quiet" id="replayNow" disabled>Replay now</button>
-      <span class="hint">recording starts on first touch; replay starts when your mouse leaves the window</span>
+      <span class="hint">recording starts on first touch; replay starts when your cursor
+        leaves the window — or tap <em>replay now</em></span>
     </div>
   </div>
 </section>
@@ -471,6 +471,9 @@ const KEY_EVERY = 24;         // scrub keyframe cadence, in substeps
 const CAP = DEMO_PARTICLE_CAP;
 
 const $ = (id) => document.getElementById(id);
+// Digests display as two 32-hex lines — the construction's own seam (half the
+// lanes permutation-invariant, half slot-bound) and a clean rag at any width.
+const fmtHex = (h) => (h && h.length === 64) ? h.slice(0, 32) + '\n' + h.slice(32) : h;
 const fmtN = (n) => n.toLocaleString('en-US').replace(/,/g, ' ');
 
 // ---------------------------------------------------------------------------
@@ -578,8 +581,8 @@ async function twinsDigest() {
   T.digestBusy = false;
   const equal = da === db;
   T.lastEqual = equal;
-  $('hashA').textContent = da;
-  $('hashB').textContent = db;
+  $('hashA').textContent = fmtHex(da);
+  $('hashB').textContent = fmtHex(db);
   $('hashA').className = 'hash ' + (equal ? 'agree' : 'disagree');
   $('hashB').className = 'hash ' + (equal ? 'agree' : 'disagree');
   const v = $('twinsVerdict');
@@ -744,12 +747,12 @@ async function replayDone() {
   if (replayDigest === recorded) {
     v.className = 'verdict';
     v.innerHTML = '<span class="dot">&#9679;</span> replay digest = recorded digest' +
-      '<span class="sub">' + recorded + '</span>';
+      '<span class="sub">' + fmtHex(recorded) + '</span>';
   } else {
     v.className = 'verdict bad';
     v.textContent = 'REPLAY MISMATCH — this should be impossible; please file an issue';
   }
-  $('hashP').textContent = replayDigest;
+  $('hashP').textContent = fmtHex(replayDigest);
   $('hashP').className = 'hash agree';
   setPoolMode('scrub');
 }
@@ -786,7 +789,7 @@ async function poolDigest() {
   P.digestBusy = true;
   const hex = await P.demo.digest();
   P.digestBusy = false;
-  $('hashP').textContent = hex;
+  $('hashP').textContent = fmtHex(hex);
   $('hashP').className = 'hash';
   $('npP').textContent = fmtN(P.demo.n) + ' / ' + fmtN(CAP);
 }
@@ -903,7 +906,7 @@ async function autotest() {
   await finishRecording();                        // -> beginReplay, mode 'replay'
   while (P.mode === 'replay') { await replayTick(); }
   const recorded = P.doc.final.digest;
-  const replayed = $('hashP').textContent;
+  const replayed = $('hashP').textContent.replace(/\s+/g, '');   // undo fmtHex display break
   R.replay = {
     durationSubsteps: P.doc.durationSubsteps,
     keyframes: P.keyframes.length,
