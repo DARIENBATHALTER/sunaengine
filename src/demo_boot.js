@@ -115,8 +115,10 @@ export async function replayFromSunar(source, opts = {}) {
   // Recorded frames are substep offsets from the recording start (frame ==
   // substep: the recorder writes substepsPerFrame = 1).
   for (const e of doc.events) {
-    if (e.type !== 'inject') continue;
-    demo.injectWater({ substep: e.frame, particles: e.particles });
+    if (e.type === 'inject') demo.injectWater({ substep: e.frame, particles: e.particles });
+    else if (e.type === 'push') {
+      demo.pushAt({ substep: e.frame, x: e.x, y: e.y, r: e.r, ix: e.ix, iy: e.iy });
+    }
   }
   demo.replayDoc = doc;
   return demo;
@@ -128,6 +130,8 @@ class WaterDemo {
     this.cap = cap;
     this.substep = 0;             // absolute substep index since (re)load
     this._schedule = new Map();   // substep -> [{x,y,vx,vy}, ...]
+    this._pushes = new Map();     // substep -> [{x,y,r,ix,iy}, ...]
+    this.pushHits = 0;            // total particles moved by pushes (gate read)
     this._rec = null;
   }
 
@@ -176,9 +180,44 @@ class WaterDemo {
     }
   }
 
+  /**
+   * Arm a deterministic cursor push: at `substep`, every fluid particle within
+   * `r` of (x, y) gets (ix, iy) added to its velocity (VMAX-clamped by the
+   * engine). Applied from a mirror synced AT that exact substep boundary, so
+   * two lockstep sims fed the same push select identical particle sets and
+   * stay bit-exact — the same contract as injectWater, extended to touch.
+   */
+  pushAt(ev) {
+    const s = int(ev.substep, 'push.substep');
+    if (s < this.substep) {
+      throw new Error(`[demo_boot] push at substep ${s} is in the past (now ${this.substep})`);
+    }
+    const p = { x: int(ev.x, 'push.x'), y: int(ev.y, 'push.y'), r: int(ev.r, 'push.r'),
+                ix: (ev.ix ?? 0) | 0, iy: (ev.iy ?? 0) | 0 };
+    if (!p.ix && !p.iy) return;
+    const bucket = this._pushes.get(s);
+    if (bucket) bucket.push(p); else this._pushes.set(s, [p]);
+    if (this._rec) {
+      this._rec.events.push({ frame: s - this._rec.startSubstep,
+                              order: this._rec.order++, type: 'push', ...p });
+    }
+  }
+
   /** Advance exactly `count` substeps, applying due injections at their exact
-   *  substep boundaries. Chunked between events so submit batching stays hot. */
+   *  substep boundaries. Chunked between events so submit batching stays hot.
+   *  Pushes need a GPU sync, so this synchronous path REFUSES them — silently
+   *  skipping one would be a determinism bug wearing a convenience. */
   step(count = 1) {
+    const end = this.substep + int(count, 'count');
+    for (const s of this._pushes.keys()) {
+      if (s >= this.substep && s < end) {
+        throw new Error(`[demo_boot] push armed at substep ${s}: use stepThrough()`);
+      }
+    }
+    return this._stepInjectOnly(count);
+  }
+
+  _stepInjectOnly(count) {
     let remaining = int(count, 'count');
     while (remaining > 0) {
       const due = this._schedule.get(this.substep);
@@ -194,6 +233,39 @@ class WaterDemo {
       }
       this.engine.step(chunk);
       this.substep += chunk;
+      remaining -= chunk;
+    }
+    return this.substep;
+  }
+
+  /** step(), but push-capable: at a substep with armed pushes the mirror is
+   *  synced on the exact boundary (queue drained -> mirror IS the state) and
+   *  the impulses applied in arming order. Deterministic per (schedule, state). */
+  async stepThrough(count = 1) {
+    let remaining = int(count, 'count');
+    while (remaining > 0) {
+      const duePush = this._pushes.get(this.substep);
+      if (duePush) {
+        this._pushes.delete(this.substep);
+        await this.engine.syncMirror();
+        for (const p of duePush) {
+          this.pushHits += this.engine.applyImpulse(p.x, p.y, p.r, p.ix, p.iy);
+        }
+      }
+      let chunk = remaining;
+      for (const s of this._pushes.keys()) {
+        if (s > this.substep && s - this.substep < chunk) chunk = s - this.substep;
+      }
+      // _stepInjectOnly stops early at its own scheduled substeps; re-check
+      // push boundaries after it returns rather than pre-slicing both maps.
+      const target = this.substep + chunk;
+      while (this.substep < target) {
+        let inj = target - this.substep;
+        for (const s of this._schedule.keys()) {
+          if (s > this.substep && s - this.substep < inj) inj = s - this.substep;
+        }
+        this._stepInjectOnly(inj);
+      }
       remaining -= chunk;
     }
     return this.substep;
@@ -271,6 +343,7 @@ class WaterDemo {
     if (s.wallsOn === false) this.engine.setWalls(false);
     if (tints) this.engine.setTints(0, tints);
     this._schedule.clear();
+    this._pushes.clear();
     this._rec = null;
     this.substep = 0;
   }
@@ -298,8 +371,11 @@ class WaterDemo {
     // deep-copy: _loadPayload clears the schedule Map it finds on the instance
     const pendingSchedule = new Map(
       [...this._schedule.entries()].map(([s, ps]) => [s, ps.slice()]));
+    const pendingPushes = new Map(
+      [...this._pushes.entries()].map(([s, ps]) => [s, ps.map((p) => ({ ...p }))]));
     this._loadPayload(initial);
     this._schedule = pendingSchedule;
+    this._pushes = pendingPushes;
     this.substep = startSubstep;
     this._rec = { startSubstep, initial, events: [], order: 0 };
     // journal anything already armed for the future so the replay gets it too
@@ -308,6 +384,12 @@ class WaterDemo {
         frame: s - startSubstep, order: this._rec.order++, type: 'inject',
         particles: ps.map((p) => ({ ...p })),
       });
+    }
+    for (const [s, ps] of [...this._pushes.entries()].sort((a, b) => a[0] - b[0])) {
+      for (const p of ps) {
+        this._rec.events.push({ frame: s - startSubstep, order: this._rec.order++,
+                                type: 'push', ...p });
+      }
     }
   }
 

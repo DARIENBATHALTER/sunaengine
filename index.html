@@ -363,7 +363,10 @@
       each other; they simply compute the same thing. Water pours in from the
       left, swirls, and settles — the background field shows the local curl of
       the velocity field (red one way, blue the other), so you can watch the two
-      vortex systems match, eddy for eddy.
+      vortex systems match, eddy for eddy. And they are not hands-off:
+      move your cursor through either pane and you stir the water — the same
+      gesture is fed to both simulations as one substep-indexed schedule, so
+      even your hand cannot tell them apart.
     </p>
   </div>
 
@@ -393,21 +396,26 @@
 
 <!-- ================= FIGURE 2 — THE REPLAY POOL ================= -->
 <section class="figure" id="fig2">
-  <h2><span class="figno">Figure 2</span> — The Replay Pool</h2>
+  <h2><span class="figno">Figure 2</span> — Smooth Rewind</h2>
   <div class="figintro">
     <p>
-      A deterministic engine does not need video to remember. The moment you
-      touch this pool — click or drag to drop water, or hold the button — it
-      starts recording a <code>.sunar</code> replay: the exact starting state
-      plus a journal of your inputs, indexed by substep. No frames are stored.
+      Particle fluids cannot be rewound. Chaos amplifies the last bit of every
+      velocity, so no floating-point engine can take a splash backwards and
+      land on the world it actually came from — the errors compound in
+      reverse, too. A bit-exact engine has no such debt. Here, memory is not
+      video: the moment you touch this pool — stir it with your cursor, drop
+      water, hold the button — it starts recording a <code>.sunar</code>
+      journal: the exact starting state plus your inputs, indexed by substep.
+      No frames are stored.
     </p>
     <p>
       When your cursor leaves the window, the pool replays your session from
-      the journal alone, and the final digest of the replay is compared,
-      byte for byte, against the digest of the run you actually performed.
-      A scrubber appears: drag it — backwards too. Reverse is
-      replay-from-nearest-keyframe-forward; snapshots taken every 24 substeps
-      make it smooth.
+      the journal alone and compares the replay's final digest, byte for
+      byte, against the run you actually performed. Then the scrubber
+      appears: drag your splash smoothly backwards and forwards through time.
+      Reverse is replay-from-nearest-keyframe-forward — snapshots every 24
+      substeps make it feel continuous — and every landing is the exact
+      state, not an approximation of it.
     </p>
   </div>
 
@@ -608,8 +616,31 @@ async function bootTwins() {
   T.a.injectWater(pour);
   T.b.injectWater(pour);
   holdButton($('dropTwins'), T, 'dropping');
+  hoverStir($('cvA')); hoverStir($('cvB'));
   T.ready = true;
 }
+
+/** Cursor-motion stirring, no click needed. Motion between two pointer samples
+ *  becomes one push event (position, radius, velocity-scaled impulse) armed at
+ *  the CURRENT substep — the twins are in lockstep, so one event, two sims,
+ *  same bits. A resting cursor pushes nothing (zero impulse is dropped). */
+function hoverStir(cv) {
+  let last = null;
+  cv.addEventListener('pointermove', (e) => {
+    const p = pointerToWorld(cv, e, 2, 70);
+    if (last) {
+      const ix = clampI((p.x - last.x) * STIR_GAIN, STIR_MAX);
+      const iy = clampI((p.y - last.y) * STIR_GAIN, STIR_MAX);
+      if (ix || iy) T.stir = { x: p.x, y: p.y, ix, iy };
+    }
+    last = p;
+  });
+  cv.addEventListener('pointerleave', () => { last = null; T.stir = null; });
+}
+const STIR_GAIN = 0.30;              // impulse per tick of cursor motion, per substep
+const STIR_MAX = wu(0.45) | 0;       // impulse ceiling, ticks/substep
+const STIR_R = wu(6) | 0;            // stir radius
+function clampI(v, m) { return Math.max(-m, Math.min(m, Math.round(v))) | 0; }
 
 function twinsScheduleDrop() {
   // One droplet per frame while held, at the CURRENT substep — both sims are
@@ -645,12 +676,19 @@ async function twinsDigest() {
   $('npB').textContent = fmtN(T.b.n) + ' / ' + fmtN(CAP);
 }
 
-function twinsTick() {
-  if (!T.ready || !T.visible) return;
+async function twinsTick() {
+  if (!T.ready || !T.visible || T.stepBusy) return;
   fitCanvas($('cvA')); fitCanvas($('cvB'));
   if (T.dropping) twinsScheduleDrop();
-  T.a.step(STEPS);
-  T.b.step(STEPS);
+  if (T.stir) {
+    const ev = { substep: T.a.substep, x: T.stir.x, y: T.stir.y,
+                 r: STIR_R, ix: T.stir.ix, iy: T.stir.iy };
+    T.a.pushAt(ev); T.b.pushAt(ev);
+    T.stir = null;                       // one sample, one push, both sims
+  }
+  T.stepBusy = true;
+  try { await T.a.stepThrough(STEPS); await T.b.stepThrough(STEPS); }
+  finally { T.stepBusy = false; }
   T.rA.draw();
   T.rB.draw();
   if (++T.frame % DIGEST_EVERY === 0 || T.frame === 6) twinsDigest();
@@ -676,7 +714,8 @@ async function bootPool() {
   holdButton($('dropPool'), P, 'dropping');
 
   cv.addEventListener('pointerdown', (e) => { e.preventDefault(); poolPointer(e); });
-  cv.addEventListener('pointermove', (e) => { if (e.buttons) poolPointer(e); });
+  cv.addEventListener('pointermove', (e) => { poolStir(e); if (e.buttons) poolPointer(e); });
+  cv.addEventListener('pointerleave', () => { P.lastStir = null; });
   // “the moment their mouse leaves the window”
   document.addEventListener('mouseout', (e) => {
     if (!e.relatedTarget && (P.mode === 'recording')) finishRecording();
@@ -708,6 +747,23 @@ function setPoolMode(m) {
 function poolPointer(e) {
   const p = pointerToWorld($('cvP'), e, 5, 48);
   queueDrop({ substep: null, at: p, w: 2, h: 2, vy: wu(0.2) });
+}
+
+/** Hover stirring — the pool's first-touch contract includes it: moving your
+ *  cursor through the water is an interaction, so it arms the recording. */
+function poolStir(e) {
+  if (P.mode === 'replay' || P.mode === 'finishing') return;
+  const p = pointerToWorld($('cvP'), e, 5, 48);
+  if (P.lastStir) {
+    const ix = clampI((p.x - P.lastStir.x) * STIR_GAIN, STIR_MAX);
+    const iy = clampI((p.y - P.lastStir.y) * STIR_GAIN, STIR_MAX);
+    if (ix || iy) {
+      if (P.mode === 'scrub') resumeLiveFromScrub();
+      P.pendingStir = { x: p.x, y: p.y, ix, iy };
+      if (P.mode === 'live') armRecording();
+    }
+  }
+  P.lastStir = p;
 }
 
 /** All interactions funnel here. In live mode the first one arms recording;
@@ -753,6 +809,9 @@ function beginReplay() {
   P.demo.restore(doc);               // the journal's load boundary, substep 0
   for (const e of doc.events) {
     if (e.type === 'inject') P.demo.injectWater({ substep: e.frame, particles: e.particles });
+    else if (e.type === 'push') {
+      P.demo.pushAt({ substep: e.frame, x: e.x, y: e.y, r: e.r, ix: e.ix, iy: e.iy });
+    }
   }
   P.keyframes = [{ substep: 0, snap: doc }];
   P.replayMax = 0;
@@ -781,7 +840,7 @@ async function replayTick() {
   }
   const boundary = (Math.floor(d.substep / KEY_EVERY) + 1) * KEY_EVERY;
   const n = Math.min(STEPS, boundary - d.substep, dur - d.substep);
-  if (n > 0) d.step(n);
+  if (n > 0) { P.stepBusy = true; try { await d.stepThrough(n); } finally { P.stepBusy = false; } }
   P.replayMax = Math.max(P.replayMax, d.substep);
   $('scrub').value = String(d.substep);
   $('scrubPos').textContent = 'substep ' + fmtN(d.substep);
@@ -806,22 +865,33 @@ async function replayDone() {
 }
 
 /** Deterministic scrub, both directions: restore the nearest keyframe at or
- *  before t, re-arm the journal from there, step forward. Fully synchronous. */
-function scrubTo(t) {
-  const dur = P.doc.durationSubsteps;
-  t = Math.max(0, Math.min(Math.min(dur, Math.max(P.replayMax, 0)), Math.round(t)));
-  let k = P.keyframes[0];
-  for (const kf of P.keyframes) { if (kf.substep <= t) k = kf; else break; }
-  P.demo.restore(k.snap);
-  for (const e of P.doc.events) {
-    if (e.type === 'inject' && e.frame >= P.demo.substep && e.frame < t) {
-      P.demo.injectWater({ substep: e.frame, particles: e.particles });
+ *  before t, re-arm the journal from there, step forward. Pushes make this
+ *  async (their mirror sync), so it is busy-guarded latest-wins: a scrub that
+ *  lands mid-scrub queues its target and the newest target always runs last. */
+async function scrubTo(t) {
+  if (P.scrubBusy) { P.scrubNext = t; return t; }
+  P.scrubBusy = true;
+  try {
+    const dur = P.doc.durationSubsteps;
+    t = Math.max(0, Math.min(Math.min(dur, Math.max(P.replayMax, 0)), Math.round(t)));
+    let k = P.keyframes[0];
+    for (const kf of P.keyframes) { if (kf.substep <= t) k = kf; else break; }
+    P.demo.restore(k.snap);
+    for (const e of P.doc.events) {
+      if (e.frame < P.demo.substep || e.frame >= t) continue;
+      if (e.type === 'inject') P.demo.injectWater({ substep: e.frame, particles: e.particles });
+      else if (e.type === 'push') {
+        P.demo.pushAt({ substep: e.frame, x: e.x, y: e.y, r: e.r, ix: e.ix, iy: e.iy });
+      }
     }
+    if (t > P.demo.substep) await P.demo.stepThrough(t - P.demo.substep);
+    P.r.draw();
+    $('scrub').value = String(t);
+    $('scrubPos').textContent = 'substep ' + fmtN(t);
+  } finally {
+    P.scrubBusy = false;
+    if (P.scrubNext != null) { const nx = P.scrubNext; P.scrubNext = null; scrubTo(nx); }
   }
-  if (t > P.demo.substep) P.demo.step(t - P.demo.substep);
-  P.r.draw();
-  $('scrub').value = String(t);
-  $('scrubPos').textContent = 'substep ' + fmtN(t);
   return t;
 }
 
@@ -842,14 +912,19 @@ async function poolDigest() {
   $('npP').textContent = fmtN(P.demo.n) + ' / ' + fmtN(CAP);
 }
 
-function poolTick() {
-  if (!P.ready || !P.visible) return;
+async function poolTick() {
+  if (!P.ready || !P.visible || P.stepBusy) return;
   fitCanvas($('cvP'));
   if (P.mode === 'replay') { replayTick(); P.r.draw(); return; }
   if (P.mode === 'scrub' || P.mode === 'arming' || P.mode === 'finishing') return;
   flushDrops();
+  if (P.pendingStir) {
+    P.demo.pushAt({ substep: P.demo.substep, r: STIR_R, ...P.pendingStir });
+    P.pendingStir = null;
+  }
   if (P.dropping) queueDrop({ at: { x: wu(64), y: wu(8) }, w: 3, h: 3, vy: wu(0.25) });
-  P.demo.step(STEPS);
+  P.stepBusy = true;
+  try { await P.demo.stepThrough(STEPS); } finally { P.stepBusy = false; }
   P.r.draw();
   if (P.mode === 'recording') setPoolMode('recording');   // refresh substep readout
   if (++P.frame % DIGEST_EVERY === 0 || P.frame === 6) poolDigest();

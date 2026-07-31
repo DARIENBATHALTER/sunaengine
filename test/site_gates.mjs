@@ -333,6 +333,33 @@ async function g2(cdp, baseUrl) {
   A(HEX64.test(post.hashA) && post.hashA === post.hashB, `digests equal after settle @ ${post.verdictSub}: ${post.hashA.slice(0, 16)}…`);
   A(post.hashA !== pre.hashA, `digest changed vs pre-input (${pre.hashA.slice(0, 8)}… -> ${post.hashA.slice(0, 8)}…)`);
   A(post.clsA.includes('agree') && !post.verdictCls.includes('bad') && post.lastEqual === true, `DOM state: .agree + lastEqual === true`);
+
+  // g2b — HOVER STIR: real mouse MOTION over sim A's canvas, no button ever
+  // pressed, must move particles in BOTH sims identically and keep the
+  // digests equal. pushHits counts particles actually displaced, so a stir
+  // that silently no-ops cannot pass.
+  const cvA = await centerOf(cdp, 'cvA');
+  const hitsPre = await cdp.ev(`(() => ({ a: __GATE__.T.a.pushHits, b: __GATE__.T.b.pushHits }))()`);
+  say('  --  stirring sim A by cursor motion alone (16 real mouseMoved, buttons: 0)');
+  // Stir where the water IS: post-pour it fills the bottom of the world, so
+  // sweep the cursor through the lower third of the canvas, not mid-air.
+  const yStir = Math.round(cvA.y + cvA.h * 0.30);
+  for (let i = 0; i < 16; i++) {
+    await mouse(cdp, 'mouseMoved', Math.round(cvA.x - 40 + i * 5), yStir + ((i & 1) ? 5 : -5), 0);
+    await sleep(45);
+  }
+  await cdp.until('stir displaced particles', `__GATE__.T.a.pushHits > ${hitsPre.a}`, 15000, 100);
+  await mouse(cdp, 'mouseMoved', 5, 5, 0);   // off-canvas: the settle is un-stirred
+  const hits = await cdp.ev(`(() => ({ a: __GATE__.T.a.pushHits, b: __GATE__.T.b.pushHits }))()`);
+  A(hits.a > hitsPre.a, `hover stir moved particles with no click: pushHits ${hitsPre.a} -> ${hits.a}`);
+  A(hits.a === hits.b, `stir applied IDENTICALLY to both sims: hits A ${hits.a} == B ${hits.b}`);
+  const subStir = await cdp.ev(`__GATE__.T.a.substep`);
+  const stirSettle = subStir + 180;
+  await cdp.until(`post-stir settle to ${stirSettle}`, `__GATE__.T.a.substep >= ${stirSettle}`, 90000, 300);
+  await cdp.until('digest refresh post-stir', `(${TWINS_STATE}).verdictSub >= ${stirSettle}`, 60000, 300);
+  const post2 = await cdp.ev(TWINS_STATE);
+  A(HEX64.test(post2.hashA) && post2.hashA === post2.hashB, `digests equal after the stir @ ${post2.verdictSub}: ${post2.hashA.slice(0, 16)}…`);
+  A(post2.hashA !== post.hashA, `the stir left a real mark: digest changed vs pre-stir settle`);
 }
 
 // ---------------------------------------------------------------------------
@@ -393,9 +420,16 @@ async function g4(cdp, baseUrl) {
   A(rep.n <= CAP, `pool n ${rep.n} <= ${CAP}`);
   // -- deterministic scrub: 3 positions, backward included, each landed twice --
   const scrub = async (t) => {
-    const r = await cdp.ev(`(() => { const $ = (i) => document.getElementById(i);
+    // scrubTo is async now (pushes sync the mirror), busy-guarded latest-wins:
+    // dispatch the input, then WAIT for the landing instead of reading the
+    // in-flight state — the same contract a human finger gets.
+    await cdp.ev(`(() => { const $ = (i) => document.getElementById(i);
       const sc = $('scrub'); sc.value = String(${t});
-      sc.dispatchEvent(new Event('input', { bubbles: true }));
+      sc.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+    await cdp.until(`scrub(${t}) lands`,
+      `__GATE__.P.mode === 'scrub' && !__GATE__.P.scrubBusy && __GATE__.P.scrubNext == null && __GATE__.P.demo.substep === ${t}`,
+      30000, 100);
+    const r = await cdp.ev(`(() => { const $ = (i) => document.getElementById(i);
       return { sub: __GATE__.P.demo.substep, mode: __GATE__.P.mode,
                pos: Number($('scrubPos').textContent.replace(/\\D/g, '')) }; })()`);
     if (r.mode !== 'scrub' || r.sub !== t || r.pos !== t) {
