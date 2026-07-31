@@ -1,669 +1,936 @@
-<!DOCTYPE html>
+<!doctype html>
+<!--
+  SunaEngine — sunabox.darienbathalter.com
+  Copyright (C) 2026 Darien Bathalter
+  SPDX-License-Identifier: AGPL-3.0-only — see LICENSE. NO WARRANTY.
+
+  This page is a thin demo harness over the real SunaBox (aether) engine in
+  ./src — the same 7k-line module, extracted unmodified (see the file headers
+  and test/extraction_gate.md for the cross-repo byte-identity proof).
+-->
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SunaEngine — Deterministic Particle Physics</title>
-<link rel="icon" type="image/png" href="assets/logo.png">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SunaEngine — bit-exact particle physics</title>
+<meta name="description" content="An integer-only, WebGPU fluid solver. Same inputs, same 256-bit state digest, on any machine. Proven live on this page.">
+<link rel="icon" href="icon-64.png">
 <style>
   :root {
-    /* Palette tuned to the gears mark: deep navy shadow, teal cylinder light. */
-    --bg: #07090f;
-    --surface: #101623;
-    --text: #e9eef6;
-    --muted: #8a94a8;
-    --accent: #37b6e2;
-    --accent2: #ff6a55;
-    --teal-dim: #12506b;
-    --radius: 12px;
+    --paper:  #f7f5f0;
+    --panel:  #fdfcfa;
+    --ink:    #1c1b18;
+    --ink-2:  #57534a;
+    --hair:   #d9d4c8;
+    --accent: #a63c17;   /* the one accent */
+    --bad:    #b3261e;
+    --serif: Charter, 'Iowan Old Style', Georgia, 'Times New Roman', serif;
+    --sans:  -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    --mono:  ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-text-size-adjust: 100%; }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    line-height: 1.6;
-    overflow-x: hidden;
+    background: var(--paper);
+    color: var(--ink);
+    font: 400 1.06rem/1.62 var(--serif);
+    padding-bottom: 6rem;
   }
+  .prose  { max-width: 42rem;  margin: 0 auto; padding: 0 1.25rem; }
+  .figure { max-width: 68rem;  margin: 0 auto; padding: 0 1.25rem; }
 
-  /* ── Navigation ── */
-  nav {
-    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
-    backdrop-filter: blur(20px) saturate(180%);
-    background: rgba(8,8,18,0.85);
-    border-bottom: 1px solid rgba(255,255,255,0.06);
-    padding: 0 24px; height: 56px;
-    display: flex; align-items: center; justify-content: space-between;
+  header { padding: 4.5rem 0 0; }
+  .wordmark {
+    font: 600 0.82rem/1 var(--sans);
+    letter-spacing: 0.34em;
+    text-transform: uppercase;
+    color: var(--ink-2);
   }
-  nav .logo { font-weight: 700; font-size: 18px; letter-spacing: -0.5px; display: flex; align-items: center; gap: 10px; }
-  nav .logo .logo-mark { width: 30px; height: 30px; display: block; filter: drop-shadow(0 0 6px rgba(68,170,255,0.35)); }
-  nav .logo span { color: var(--accent); }
-  nav .links { display: flex; gap: 20px; align-items: center; }
-  nav .links a {
-    color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 500;
-    transition: color 0.2s;
+  .wordmark b { color: var(--accent); font-weight: 600; }
+  h1 {
+    font: 400 clamp(1.9rem, 4.6vw, 2.9rem)/1.18 var(--serif);
+    letter-spacing: -0.012em;
+    margin: 1.1rem 0 1.4rem;
+    max-width: 30ch;
   }
-  nav .links a:hover { color: var(--text); }
-  nav .links .gh {
-    display: flex; align-items: center; gap: 6px;
-    padding: 6px 14px; border-radius: 20px;
-    border: 1px solid rgba(255,255,255,0.12);
-    color: var(--text); font-weight: 600; font-size: 13px;
-    transition: border-color 0.2s, background 0.2s;
+  .lead { font-size: 1.13rem; color: var(--ink); }
+  .lead + .lead { margin-top: 0.9rem; }
+  .env-note {
+    margin-top: 1.5rem;
+    font: 400 0.78rem/1.5 var(--sans);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-2);
   }
-  nav .links .gh:hover { border-color: rgba(255,255,255,0.3); background: rgba(255,255,255,0.05); }
+  .env-note span { white-space: nowrap; }
+  .env-note span + span::before { content: '·'; margin: 0 0.6em; color: var(--hair); }
 
-  /* ── Sections ── */
-  section { padding: 100px 24px; max-width: 1100px; margin: 0 auto; }
-  .hero {
-    padding-top: 160px; text-align: center; position: relative;
-    border-radius: 24px; overflow: hidden; isolation: isolate;
-  }
-  /* Media slot: Darien records a water-splash video; assets/hero.mp4 is picked
-     up automatically when it exists. The gradient stays under it as the
-     fallback and the letterbox for slow loads. The overlay keeps type legible
-     over any footage. */
-  .hero .hero-media {
-    position: absolute; inset: 0; z-index: -2;
-    background:
-      radial-gradient(120% 90% at 50% 0%, rgba(55,182,226,0.16), transparent 55%),
-      radial-gradient(90% 70% at 80% 100%, rgba(18,80,107,0.22), transparent 60%),
-      var(--bg);
-  }
-  .hero .hero-media video {
-    width: 100%; height: 100%; object-fit: cover; opacity: 0.5;
-    display: none; /* shown only if the source actually loads */
-  }
-  .hero .hero-veil {
-    position: absolute; inset: 0; z-index: -1;
-    background: linear-gradient(180deg, rgba(7,9,15,0.55) 0%, rgba(7,9,15,0.78) 55%, rgba(7,9,15,0.92) 100%);
-  }
-  .hero h1 { font-size: clamp(40px, 8vw, 72px); font-weight: 800; letter-spacing: -2px; line-height: 1.05; }
-  .hero h1 span { color: var(--accent); text-shadow: 0 0 26px rgba(55,182,226,0.35); }
-  .hero p {
-    margin-top: 24px; font-size: 20px; color: var(--muted); max-width: 600px;
-    margin-left: auto; margin-right: auto;
-  }
-  .hero .hero-logo { width: 104px; height: 104px; margin: 0 auto 22px;
-    filter: drop-shadow(0 10px 30px rgba(0,0,0,0.55)) drop-shadow(0 0 22px rgba(55,182,226,0.25)); }
-  .hero .badges { margin-top: 32px; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
-  .hero .badge {
-    padding: 8px 18px; border-radius: 20px; font-size: 13px; font-weight: 600;
-    border: 1px solid rgba(255,255,255,0.1); color: var(--muted);
-  }
-  .hero .badge.hl { border-color: var(--accent); color: var(--accent); }
+  hr.rule { border: 0; border-top: 1px solid var(--hair); margin: 3.2rem auto; max-width: 68rem; }
 
-  /* ── Demo Section ── */
-  .demo-section { padding: 60px 24px; }
-  .demo-section h2 {
-    font-size: 32px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 8px;
+  h2 {
+    font: 600 0.82rem/1.4 var(--sans);
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 0.9rem;
   }
-  .demo-section .subtitle { color: var(--muted); font-size: 16px; margin-bottom: 32px; }
-  
-  .demo-card {
-    background: var(--surface); border-radius: var(--radius);
-    border: 1px solid rgba(255,255,255,0.06);
-    overflow: hidden;
-  }
-  .demo-card .canvas-row {
+  h2 .figno { color: var(--ink); }
+  .figintro { max-width: 42rem; margin-bottom: 1.6rem; }
+  .figintro p + p { margin-top: 0.7rem; }
+
+  /* ---- panels -------------------------------------------------------- */
+  .twins {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 1px;
-    background: rgba(255,255,255,0.04);
+    gap: 1.4rem;
   }
-  .demo-card .canvas-row.single { grid-template-columns: 1fr; }
-  .demo-card canvas {
-    display: block; width: 100%; aspect-ratio: 16/9; background: #080812;
+  @media (max-width: 760px) { .twins { grid-template-columns: 1fr; } }
+
+  .panel { min-width: 0; }
+  .panel canvas, .pool canvas {
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    background: #05070d;
+    border: 1px solid var(--hair);
+    border-radius: 2px;
+    touch-action: none;
     cursor: crosshair;
   }
-  .demo-card .controls {
-    padding: 16px 20px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
-    border-top: 1px solid rgba(255,255,255,0.06);
+  .panel-label {
+    font: 500 0.72rem/1.4 var(--sans);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+    margin: 0.55rem 0 0.25rem;
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
   }
-  .demo-card .hash-display {
-    padding: 12px 20px; border-top: 1px solid rgba(255,255,255,0.06);
-    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
-    font-size: 12px; color: var(--muted);
-    display: flex; gap: 20px; flex-wrap: wrap;
+  .panel-label .np { font-family: var(--mono); letter-spacing: 0; text-transform: none; }
+
+  .hash {
+    font: 400 0.76rem/1.5 var(--mono);
+    letter-spacing: 0.045em;
+    word-break: break-all;
+    color: var(--ink);
+    border-left: 2px solid var(--hair);
+    padding-left: 0.6rem;
+    min-height: 2.4em;
+    transition: border-color 0.3s;
   }
-  .demo-card .hash-display .hash-label { font-weight: 600; color: var(--text); }
-  .demo-card .hash-display .hash-match { color: #4f8; font-weight: 600; }
-  .demo-card .hash-display .hash-diff { color: var(--accent2); font-weight: 600; }
-  
-  /* Buttons & Controls */
-  button, .btn {
-    padding: 8px 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.15);
-    background: rgba(255,255,255,0.05); color: var(--text); font-size: 13px;
-    font-weight: 600; cursor: pointer; transition: all 0.15s;
-    font-family: inherit;
+  .hash.agree    { border-left-color: var(--accent); }
+  .hash.disagree { border-left-color: var(--bad); color: var(--bad); }
+
+  .verdict {
+    margin-top: 1.1rem;
+    text-align: center;
+    font: 500 0.8rem/1.5 var(--sans);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+    min-height: 1.5em;
   }
-  button:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.25); }
-  button.accent { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 700; }
-  button.accent:hover { filter: brightness(1.15); }
-  input[type="range"] {
-    -webkit-appearance: none; appearance: none; background: rgba(255,255,255,0.1);
-    height: 6px; border-radius: 3px; outline: none; min-width: 120px;
+  .verdict .dot { color: var(--accent); }
+  .verdict.bad  { color: var(--bad); }
+  .verdict .sub { display: block; letter-spacing: 0.04em; text-transform: none;
+                  font-family: var(--mono); font-size: 0.72rem; color: var(--ink-2); }
+
+  /* ---- controls ------------------------------------------------------- */
+  .controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1.2rem;
+    margin-top: 1.2rem;
+    flex-wrap: wrap;
   }
-  input[type="range"]::-webkit-slider-thumb {
-    -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%;
-    background: var(--accent); cursor: pointer; border: none;
+  button.hold, button.quiet {
+    font: 500 0.78rem/1 var(--sans);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink);
+    background: var(--panel);
+    border: 1px solid var(--ink);
+    border-radius: 2px;
+    padding: 0.7rem 1.3rem;
+    cursor: pointer;
+    touch-action: none;
+    -webkit-user-select: none; user-select: none;
+  }
+  button.hold:active, button.hold.held {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--paper);
+  }
+  button.quiet { border-color: var(--hair); color: var(--ink-2); }
+  button.quiet:hover { border-color: var(--ink-2); }
+  button[disabled] { opacity: 0.4; pointer-events: none; }
+  .hint {
+    font: 400 0.78rem/1.5 var(--sans);
+    color: var(--ink-2);
   }
 
-  /* ── Features Grid ── */
-  .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
-  .feature {
-    background: var(--surface); border: 1px solid rgba(255,255,255,0.06);
-    border-radius: var(--radius); padding: 28px;
+  /* ---- demo 2 -------------------------------------------------------- */
+  .pool { max-width: 56rem; margin: 0 auto; }
+  .status-line {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1rem;
+    margin: 0.55rem 0 0.25rem;
+    font: 500 0.72rem/1.4 var(--sans);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-2);
   }
-  .feature .icon { font-size: 32px; margin-bottom: 12px; }
-  .feature h3 { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
-  .feature p { color: var(--muted); font-size: 14px; }
+  .status-line .mode.rec    { color: var(--bad); }
+  .status-line .mode.replay { color: var(--accent); }
+  .status-line .np { font-family: var(--mono); letter-spacing: 0; text-transform: none; }
 
-  /* ── Specs Bar ── */
-  .specs {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: 0;
-    border: 1px solid rgba(255,255,255,0.06);
-    border-radius: var(--radius);
-    overflow: hidden;
+  .scrub-row { margin-top: 1.1rem; display: none; }
+  .scrub-row.on { display: block; }
+  input[type=range].scrub {
+    width: 100%;
+    height: 22px;
+    appearance: none; -webkit-appearance: none;
+    background: transparent;
+    cursor: ew-resize;
   }
-  .spec {
-    padding: 20px; text-align: center;
-    border-right: 1px solid rgba(255,255,255,0.06);
-    background: var(--surface);
+  input[type=range].scrub::-webkit-slider-runnable-track {
+    height: 2px; background: var(--hair);
   }
-  .spec:last-child { border-right: none; }
-  .spec .value { font-size: 28px; font-weight: 800; color: var(--accent); }
-  .spec .label { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  input[type=range].scrub::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--accent); border: 0;
+    margin-top: -6px;
+  }
+  input[type=range].scrub::-moz-range-track { height: 2px; background: var(--hair); }
+  input[type=range].scrub::-moz-range-thumb {
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--accent); border: 0;
+  }
+  .scrub-caption {
+    display: flex; justify-content: space-between;
+    font: 400 0.72rem/1.5 var(--mono);
+    color: var(--ink-2);
+    margin-top: 0.15rem;
+  }
 
-  /* ── Footer ── */
+  .nogpu {
+    padding: 3rem 1.5rem;
+    border: 1px solid var(--hair);
+    border-radius: 2px;
+    background: var(--panel);
+    text-align: center;
+    font: 400 0.95rem/1.6 var(--serif);
+    color: var(--ink-2);
+  }
+
+  /* ---- how / text sections ------------------------------------------- */
+  section.text h3 {
+    font: 600 1.02rem/1.4 var(--serif);
+    margin: 1.7rem 0 0.4rem;
+  }
+  section.text p + p { margin-top: 0.7rem; }
+  code {
+    font: 400 0.86em var(--mono);
+    background: #edeae2;
+    padding: 0.08em 0.32em;
+    border-radius: 2px;
+  }
+  pre {
+    background: #14130f;
+    color: #e8e4da;
+    font: 400 0.8rem/1.6 var(--mono);
+    padding: 1rem 1.2rem;
+    border-radius: 3px;
+    overflow-x: auto;
+    margin: 0.9rem 0;
+  }
+  pre .c { color: #8b867a; }
+  a { color: var(--accent); text-decoration: none; border-bottom: 1px solid #d9b3a2; }
+  a:hover { border-bottom-color: var(--accent); }
+
   footer {
-    padding: 60px 24px; text-align: center;
-    border-top: 1px solid rgba(255,255,255,0.06);
+    margin-top: 4.5rem;
+    font: 400 0.82rem/1.7 var(--sans);
+    color: var(--ink-2);
   }
-  footer .links { display: flex; gap: 20px; justify-content: center; margin-bottom: 16px; }
-  footer .links a { color: var(--muted); text-decoration: none; font-size: 14px; }
-  footer .links a:hover { color: var(--text); }
-  footer .copy { color: var(--muted); font-size: 13px; }
-  footer .copy a { color: var(--accent); text-decoration: none; }
-
-  /* ── Toast ── */
-  .toast {
-    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
-    padding: 10px 20px; border-radius: 20px; background: var(--surface);
-    border: 1px solid rgba(255,255,255,0.1); font-size: 13px; font-weight: 600;
-    z-index: 200; pointer-events: none; opacity: 0; transition: opacity 0.3s;
-  }
-  .toast.show { opacity: 1; }
-
-  /* ── Responsive ── */
-  @media (max-width: 768px) {
-    .demo-card .canvas-row { grid-template-columns: 1fr; }
-    section { padding: 60px 16px; }
-    .hero { padding-top: 120px; }
-    .hero h1 { font-size: 36px; }
-    .features { grid-template-columns: 1fr; }
-  }
+  footer .credit { font-style: italic; font-family: var(--serif); }
+  .fineprint { margin-top: 0.8rem; }
 </style>
+<script>
+  /* Error collector — installed before the module loads so import/boot errors
+     are counted too. Read by the ?autotest=1 harness. */
+  window.__ERRORS__ = [];
+  window.addEventListener('error', (e) => {
+    window.__ERRORS__.push(String(e.message || e.error || 'error'));
+  });
+  window.addEventListener('unhandledrejection', (e) => {
+    window.__ERRORS__.push('unhandledrejection: ' + String(e.reason && e.reason.message || e.reason));
+  });
+</script>
 </head>
 <body>
 
-<!-- ── Navigation ── -->
-<nav>
-  <div class="logo"><img src="assets/logo.png" alt="Suna Engine" class="logo-mark"> <span>Suna</span>Engine</div>
-  <div class="links">
-    <a href="#demos">Demos</a>
-    <a href="#features">Features</a>
-    <a href="#specs">Specs</a>
-    <a href="https://github.com/DARIENBATHALTER/sunaengine" class="gh" target="_blank" rel="noopener">
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
-      GitHub
-    </a>
+<header class="prose">
+  <div class="wordmark"><b>Suna</b>Engine</div>
+  <h1>Every mainstream physics engine drifts. This one cannot.</h1>
+  <p class="lead">
+    Run the same simulation on two machines and floating-point arithmetic will,
+    sooner or later, disagree — different GPUs, drivers, and compilers round
+    differently, and chaos amplifies the last bit into a different world.
+    SunaEngine's solver contains no floating point at all. Every quantity is
+    signed 32-bit fixed point; every operation rounds half-to-even and
+    saturates on overflow. Same inputs, same bits, on any WebGPU device.
+  </p>
+  <p class="lead">
+    That claim is checkable, so this page checks it — live, on your GPU.
+    The 64 hex digits under each simulation are a 256-bit digest of the
+    <em>entire</em> particle state, recomputed as it runs.
+  </p>
+  <div class="env-note">
+    <span>requires WebGPU (Chrome / Edge 113+)</span>
+    <span>simulates on your GPU</span>
+    <span>max 3&thinsp;000 particles per sim</span>
+    <span>pauses off-screen</span>
   </div>
-</nav>
+</header>
 
-<!-- ── Hero ── -->
-<section class="hero" id="hero">
-  <div class="hero-media" aria-hidden="true">
-    <video id="heroVideo" muted loop playsinline preload="metadata">
-      <source src="assets/hero.mp4" type="video/mp4">
-    </video>
-    <div class="hero-veil"></div>
+<hr class="rule">
+
+<!-- ================= FIGURE 1 — THE TWINS ================= -->
+<section class="figure" id="fig1">
+  <h2><span class="figno">Figure 1</span> — The Twins</h2>
+  <div class="figintro">
+    <p>
+      Two independent simulations, booted from the same scene, fed the same
+      injection schedule. They never communicate and are never corrected toward
+      each other; they simply compute the same thing. Water pours in from the
+      left, swirls, and settles — the background field shows the local curl of
+      the velocity field (red one way, blue the other), so you can watch the two
+      vortex systems match, eddy for eddy.
+    </p>
+    <p>
+      Hold <em>drop more</em> and water falls for as long as you hold. Your
+      press is quantized to integer substep indices and the resulting schedule
+      is handed to both sims identically — so they stay bit-exact through
+      everything you do.
+    </p>
   </div>
-  <img src="assets/logo.png" alt="Suna Engine — gears in a depth cylinder" class="hero-logo">
-  <h1>The Bit-Exact<br><span>Physics Engine</span></h1>
+
+  <div id="twinsHost">
+    <div class="twins">
+      <div class="panel">
+        <canvas id="cvA"></canvas>
+        <div class="panel-label"><span>sim A</span><span class="np" id="npA">—</span></div>
+        <div class="hash" id="hashA">—</div>
+      </div>
+      <div class="panel">
+        <canvas id="cvB"></canvas>
+        <div class="panel-label"><span>sim B</span><span class="np" id="npB">—</span></div>
+        <div class="hash" id="hashB">—</div>
+      </div>
+    </div>
+    <div class="verdict" id="twinsVerdict"></div>
+    <div class="controls">
+      <button class="hold" id="dropTwins">Drop more — hold</button>
+      <span class="hint">identical schedule &rarr; both sims</span>
+    </div>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ================= FIGURE 2 — THE REPLAY POOL ================= -->
+<section class="figure" id="fig2">
+  <h2><span class="figno">Figure 2</span> — The Replay Pool</h2>
+  <div class="figintro">
+    <p>
+      A deterministic engine does not need video to remember. The moment you
+      touch this pool — click or drag to drop water, or hold the button — it
+      starts recording a <code>.sunar</code> replay: the exact starting state
+      plus a journal of your inputs, indexed by substep. No frames are stored.
+    </p>
+    <p>
+      When your cursor leaves the window, the pool replays your session from
+      the journal alone, and the final digest of the replay is compared,
+      byte for byte, against the digest of the run you actually performed.
+      A scrubber appears: drag it — backwards too. Reverse is
+      replay-from-nearest-keyframe-forward; snapshots taken every 24 substeps
+      make it smooth.
+    </p>
+  </div>
+
+  <div class="pool" id="poolHost">
+    <canvas id="cvP"></canvas>
+    <div class="status-line">
+      <span class="mode" id="poolMode">live</span>
+      <span class="np" id="npP">—</span>
+    </div>
+    <div class="hash" id="hashP">—</div>
+    <div class="verdict" id="poolVerdict"></div>
+    <div class="scrub-row" id="scrubRow">
+      <input type="range" class="scrub" id="scrub" min="0" max="1" step="1" value="0">
+      <div class="scrub-caption">
+        <span id="scrubPos">substep 0</span>
+        <span id="scrubLen"></span>
+      </div>
+    </div>
+    <div class="controls">
+      <button class="hold" id="dropPool">Drop more — hold</button>
+      <button class="quiet" id="replayNow" disabled>Replay now</button>
+      <span class="hint">recording starts on first touch; replay starts when your mouse leaves the window</span>
+    </div>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ================= HOW ================= -->
+<section class="prose text">
+  <h2>How</h2>
+
+  <h3>Fixed point, not floating point</h3>
   <p>
-    SunaEngine is an open-source particle physics engine that guarantees
-    <strong>bit-identical</strong> simulation output — every time, everywhere,
-    on any WebGPU-capable device.
+    All simulation state is signed 32-bit fixed point — positions and
+    velocities in Q16.16, where the integer 65&thinsp;536 is one world unit.
+    Every multiply is an exact 32&times;32&rarr;64-bit product followed by an
+    arithmetic shift with round-half-to-even; overflow saturates instead of
+    wrapping. RNE is symmetric — RNE(&minus;x)&nbsp;=&nbsp;&minus;RNE(x) — which is
+    what makes pair forces exactly antisymmetric, so momentum bookkeeping
+    cannot leak parity errors. The solver's WGSL contains no float scalars,
+    vectors, or bitcasts; a gate greps for the tokens.
   </p>
-  <div class="badges">
-    <span class="badge hl">WebGPU</span>
-    <span class="badge">256-bit State Hash</span>
-    <span class="badge">Integer-Only Math</span>
-    <span class="badge">Zero Floating Point</span>
-    <span class="badge">GPL-3.0 Licensed</span>
-  </div>
-</section>
 
-<!-- ── Demo 1: Deterministic Waterfall ── -->
-<section class="demo-section" id="demos">
-  <h2>Demo 1 — Deterministic Twin</h2>
-  <p class="subtitle">
-    Two identical water columns, seeded from the same bytes. Watch them fall 
-    and settle — their 256-bit state hash stays <strong>byte-for-byte identical</strong> 
-    through every frame.
+  <h3>Determinism on a parallel GPU</h3>
+  <p>
+    Bit-exact arithmetic is not enough — thousands of GPU threads finish in no
+    particular order. So every accumulation in the solver is a per-term-clamped
+    32-bit integer sum, which is commutative and associative: dispatch order
+    cannot change the result. The one genuinely order-sensitive step —
+    truncating a neighbor list that overflows its cap — is canonicalized before
+    truncation. The engine runs a position-based fluid solve (density
+    constraints, XSPH viscosity, surface tension) entirely under those rules.
   </p>
-  <div class="demo-card" id="demo1">
-    <div class="canvas-row">
-      <canvas id="d1a" width="640" height="360"></canvas>
-      <canvas id="d1b" width="640" height="360"></canvas>
-    </div>
-    <div class="hash-display" id="d1hash">
-      <span class="hash-label">Hash:</span> <span id="d1hashA">—</span>
-      <span class="hash-label">Hash:</span> <span id="d1hashB">—</span>
-      <span class="hash-match" id="d1match" style="display:none;">✓ IDENTICAL</span>
-      <span class="hash-diff" id="d1diff" style="display:none;">✗ DIVERGED</span>
-    </div>
-    <div class="controls">
-      <button onclick="d1Reset()">🔄 Reset</button>
-      <button onclick="d1DropMore()">💧 Drop More</button>
-      <span style="color:var(--muted);font-size:12px;margin-left:auto;">
-        Frame: <span id="d1frame">0</span> &nbsp; Particles: <span id="d1particles">0</span>
-      </span>
-    </div>
-  </div>
-</section>
 
-<!-- ── Demo 2: Push & Reverse ── -->
-<section class="demo-section">
-  <h2>Demo 2 — Push &amp; Rewind</h2>
-  <p class="subtitle">
-    Drag through the water to push it around. Use the slider to scrub backward and forward 
-    through the simulation. Every frame is <strong>deterministic</strong> — the same 
-    inputs always produce the exact same result.
+  <h3>The digest</h3>
+  <p>
+    The number under each panel is a 256-bit digest of every word of particle
+    state: MurmurHash3 run as salted lanes over each particle, combined across
+    particles by 32-bit addition — again commutative, so the GPU can hash in
+    any order and still agree with the CPU reference. Half the lanes are
+    permutation-invariant; the other half bind each particle to its storage
+    slot, so a reordering and a physics divergence are distinguishable. A
+    per-substep hash chain (the same construction, folded every substep) is
+    what the repo's gates compare across machines.
   </p>
-  <div class="demo-card" id="demo2">
-    <div class="canvas-row single">
-      <canvas id="d2" width="960" height="540"></canvas>
-    </div>
-    <div class="hash-display">
-      <span class="hash-label">Frame:</span> <span id="d2frame">0</span>
-      <span class="hash-label">Hash:</span> <span id="d2hash">—</span>
-      <span class="hash-label">Snapshots:</span> <span id="d2snaps">0</span>
-    </div>
-    <div class="controls">
-      <button onclick="d2Reset()">🔄 Reset Pool</button>
-      <button onclick="d2Record()" id="d2recBtn">⏺️ Record</button>
-      <button onclick="d2Play()" id="d2playBtn">▶️ Replay</button>
-      <input type="range" id="d2scrub" min="0" max="0" value="0" style="flex:1;min-width:200px;"
-             oninput="d2Scrub(this.value)">
-      <span style="color:var(--muted);font-size:12px;">
-        Frame <span id="d2scrubVal">0</span>/<span id="d2scrubMax">0</span>
-      </span>
-    </div>
-  </div>
-</section>
 
-<!-- ── Features ── -->
-<section id="features">
-  <h2 style="font-size:32px;font-weight:700;margin-bottom:8px;">Why SunaEngine?</h2>
-  <p class="subtitle">Most physics engines use floating-point math that varies between devices. SunaEngine doesn't.</p>
-  <div class="features" style="margin-top:32px;">
-    <div class="feature">
-      <div class="icon">🔒</div>
-      <h3>Bit-Exact Determinism</h3>
-      <p>
-        Integer-only fixed-point arithmetic eliminates floating-point variance. 
-        Same input → same 256-bit hash, guaranteed, on any GPU.
-      </p>
-    </div>
-    <div class="feature">
-      <div class="icon">⚡</div>
-      <h3>WebGPU Native</h3>
-      <p>
-        Runs compute shaders directly on the GPU for maximum throughput. 
-        Thousands of particles at real-time frame rates.
-      </p>
-    </div>
-    <div class="feature">
-      <div class="icon">📐</div>
-      <h3>Position-Based Dynamics</h3>
-      <p>
-        The PBF solver handles density constraints, viscosity, cohesion, 
-        and surface tension — all in exact integer math.
-      </p>
-    </div>
-    <div class="feature">
-      <div class="icon">🪶</div>
-      <h3>Minimal & Focused</h3>
-      <p>
-        No temperature, no reactions, no material presets. Just the pure 
-        solver core, ready to build on.
-      </p>
-    </div>
-    <div class="feature">
-      <div class="icon">🔄</div>
-      <h3>Replay & Rewind</h3>
-      <p>
-        Record input sequences and replay them deterministically. 
-        Perfect for networked games, replays, and verification.
-      </p>
-    </div>
-    <div class="feature">
-      <div class="icon">🌐</div>
-      <h3>Cross-Platform</h3>
-      <p>
-        Runs in any browser with WebGPU support. Chrome, Edge, Firefox Nightly — 
-        same bytes, same hash, everywhere.
-      </p>
-    </div>
-  </div>
-</section>
+  <h3>Quick start</h3>
+  <p>No build step, no dependencies. The engine is plain ES modules over WebGPU:</p>
+<pre><code>git clone https://github.com/DARIENBATHALTER/sunaengine.git
+cd sunaengine
+python3 -m http.server 8080
+<span class="c"># open http://localhost:8080 in Chrome 113+</span></code></pre>
+<pre><code><span class="c">// water-only harness over the full engine (src/demo_boot.js)</span>
+import { bootWaterDemo, makeDroplet, wu } from './src/demo_boot.js';
 
-<!-- ── Specs ── -->
-<section id="specs">
-  <h2 style="font-size:32px;font-weight:700;margin-bottom:24px;">Engineering Specs</h2>
-  <div class="specs">
-    <div class="spec"><div class="value">Q16.16</div><div class="label">Fixed-Point Format</div></div>
-    <div class="spec"><div class="value">i32</div><div class="label">Arithmetic Type</div></div>
-    <div class="spec"><div class="value">256-bit</div><div class="label">State Hash (Murmur3)</div></div>
-    <div class="spec"><div class="value">RNE</div><div class="label">Rounding (Half-to-Even)</div></div>
-    <div class="spec"><div class="value">32 B</div><div class="label">Per-Particle State</div></div>
-    <div class="spec"><div class="value">2.5 wu</div><div class="label">Kernel Radius</div></div>
-  </div>
-</section>
-
-<!-- ── Footer ── -->
-<footer>
-  <div class="links">
-    <a href="https://github.com/DARIENBATHALTER/sunaengine" target="_blank" rel="noopener">GitHub</a>
-    <a href="https://github.com/DARIENBATHALTER/sunaengine/blob/main/README.md" target="_blank" rel="noopener">Docs</a>
-    <a href="https://github.com/DARIENBATHALTER/sunaengine/issues" target="_blank" rel="noopener">Issues</a>
-    <a href="https://github.com/DARIENBATHALTER/sunaengine/blob/main/LICENSE" target="_blank" rel="noopener">GPL-3.0 License</a>
-  </div>
-  <p class="copy">
-    SunaEngine · Open Source · Built by <a href="https://github.com/DARIENBATHALTER" target="_blank" rel="noopener">Darien Bathalter</a>
+const sim = await bootWaterDemo({ scene: 'pool' });
+sim.injectWater({ substep: 60, particles: makeDroplet(wu(64), wu(10)) });
+sim.step(240);
+console.log(await sim.digest());
+<span class="c">// → the same 64 hex characters on every machine</span></code></pre>
+  <p>
+    The determinism claims on this page are enforced by the repo's own gates —
+    <a href="test/extraction_gate.html">test/extraction_gate.html</a> runs the
+    frozen dam-break scene and the record&rarr;replay byte-identity check in
+    your browser, and <code>test/extraction_gate.md</code> documents the
+    cross-repo proof that this engine is byte-for-byte the SunaBox engine.
   </p>
-</footer>
 
-<!-- ── Toast ── -->
-<div class="toast" id="toast"></div>
+  <footer>
+    <p>
+      <strong>License.</strong> GNU AGPL-3.0-only &middot; Copyright &copy; 2026
+      Darien Bathalter. Source on
+      <a href="https://github.com/DARIENBATHALTER/sunaengine">GitHub</a>.
+    </p>
+    <p class="fineprint credit">A love letter to OE-CAKE! by Prometech Software.</p>
+  </footer>
+</section>
 
-<!-- ── Engine & Demo Logic ── -->
 <script type="module">
-import { SunaEngine } from './src/engine.js?v=3';
-import { ONE } from './src/common.js?v=3';
+import { bootWaterDemo, makeDroplet, wu, DEMO_PARTICLE_CAP } from './src/demo_boot.js';
+import { createRenderer } from './src/render.js';
 
-// ──────────────────────────────────────────────────────────────────────
-// Demo 1: Deterministic twin waterfalls
-// ──────────────────────────────────────────────────────────────────────
-const d1a = new SunaEngine(document.getElementById('d1a'), { w: 64, h: 36, maxParticles: 4096 });
-const d1b = new SunaEngine(document.getElementById('d1b'), { w: 64, h: 36, maxParticles: 4096 });
+const AUTOTEST = new URLSearchParams(location.search).has('autotest');
+const STEPS = 2;              // substeps per animation frame (engine convention)
+const DIGEST_EVERY = 18;      // frames between digest refreshes
+const KEY_EVERY = 24;         // scrub keyframe cadence, in substeps
+const CAP = DEMO_PARTICLE_CAP;
 
-async function d1Init() {
-  await d1a.init();
-  await d1b.init();
+const $ = (id) => document.getElementById(id);
+const fmtN = (n) => n.toLocaleString('en-US').replace(/,/g, ' ');
 
-  // Seed both engines with identical initial state
-  d1a.spawn(20, 28, 4);
-  d1a.spawn(44, 28, 4);
-  d1b.spawn(20, 28, 4);
-  d1b.spawn(44, 28, 4);
-
-  d1Loop();
+// ---------------------------------------------------------------------------
+// shared plumbing
+// ---------------------------------------------------------------------------
+function fitCanvas(cv) {
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const w = Math.max(1, Math.round(cv.clientWidth * dpr));
+  const h = Math.max(1, Math.round(cv.clientHeight * dpr));
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
 }
 
-let d1Running = true;
-let d1AnimId;
-
-async function d1Loop() {
-  if (!d1Running) return;
-
-  d1a.step();
-  d1b.step();
-
-  await Promise.all([d1a.render(), d1b.render()]);
-
-  const hA = d1a.getHash();
-  const hB = d1b.getHash();
-  document.getElementById('d1hashA').textContent = hA.slice(0, 32) + '…';
-  document.getElementById('d1hashB').textContent = hB.slice(0, 32) + '…';
-  document.getElementById('d1frame').textContent = d1a.frame;
-  document.getElementById('d1particles').textContent = d1a.n;
-
-  const match = hA === hB;
-  document.getElementById('d1match').style.display = match ? 'inline' : 'none';
-  document.getElementById('d1diff').style.display = match ? 'none' : 'inline';
-
-  d1AnimId = requestAnimationFrame(d1Loop);
-}
-
-window.d1Reset = async () => {
-  await d1a.reset();
-  await d1b.reset();
-  d1a.spawn(20, 28, 4);
-  d1a.spawn(44, 28, 4);
-  d1b.spawn(20, 28, 4);
-  d1b.spawn(44, 28, 4);
-};
-
-window.d1DropMore = () => {
-  d1a.spawn(12, 33, 2);
-  d1b.spawn(12, 33, 2);
-  d1a.spawn(52, 33, 2);
-  d1b.spawn(52, 33, 2);
-};
-
-// ──────────────────────────────────────────────────────────────────────
-// Demo 2: Push & Rewind
-// ──────────────────────────────────────────────────────────────────────
-const d2canvas = document.getElementById('d2');
-const d2 = new SunaEngine(d2canvas, { w: 96, h: 54, maxParticles: 8192 });
-
-let d2Snapshots = [];
-let d2Recording = false;
-let d2Replaying = false;
-let d2ReplayIdx = 0;
-let d2MouseDown = false;
-let d2MouseX = 0, d2MouseY = 0;
-let d2LastMouseX = 0, d2LastMouseY = 0;
-
-// Demo-2 scene is a fixed constellation, not Math.random(): a determinism
-// demo should give every visitor the SAME water, or the replay claim is
-// untestable side by side.
-const D2_DROPS = [
-  [24, 40, 3], [34, 44, 2], [48, 42, 3], [62, 40, 2],
-  [72, 44, 3], [30, 34, 2], [56, 36, 2], [68, 33, 2],
-];
-
-async function d2Init() {
-  await d2.init();
-  // Spawn a pool of water + a fixed set of hanging drops
-  d2.spawn(48, 10, 20);
-  for (const [x, y, r] of D2_DROPS) d2.spawn(x, y, r);
-  await d2.render();
-  d2Snapshots = [d2.snapshot()];
-  updateD2Scrub();
-  d2Loop();
-}
-
-function updateD2Scrub() {
-  const max = d2Snapshots.length - 1;
-  document.getElementById('d2scrub').max = Math.max(0, max);
-  document.getElementById('d2scrubMax').textContent = max;
-}
-
-let d2AnimId;
-
-async function d2Loop() {
-  if (d2Replaying && d2Snapshots.length > 0) {
-    d2ReplayIdx = Math.min(d2ReplayIdx + 1, d2Snapshots.length - 1);
-    d2.restore(d2Snapshots[d2ReplayIdx]);
-    await d2.render();
-    const h = d2.getHash();
-    document.getElementById('d2frame').textContent = d2ReplayIdx;
-    document.getElementById('d2hash').textContent = h.slice(0, 32) + '…';
-    document.getElementById('d2scrub').value = d2ReplayIdx;
-    document.getElementById('d2scrubVal').textContent = d2ReplayIdx;
-    document.getElementById('d2snaps').textContent = d2Snapshots.length;
-    d2AnimId = requestAnimationFrame(d2Loop);
-    return;
-  }
-
-  // Push effect: if mouse is down, apply a push impulse to nearby particles.
-  // Impulse magnitudes are integers — the state buffer is Int32, and a
-  // fractional push would silently truncate at write time.
-  if (d2MouseDown && d2.frame % 3 === 0) {
-    const rect = d2canvas.getBoundingClientRect();
-    const scaleW = 96 / rect.width;
-    const scaleH = 54 / rect.height;
-    const wx = (d2MouseX - rect.left) * scaleW;
-    const wy = 54 - (d2MouseY - rect.top) * scaleH;
-    const dx = Math.round((d2MouseX - d2LastMouseX) * scaleW * ONE * 0.05);
-    const dy = Math.round(-(d2MouseY - d2LastMouseY) * scaleH * ONE * 0.05);
-    d2.pushParticles(wx, wy, 6, dx, dy);
-  }
-  d2LastMouseX = d2MouseX;
-  d2LastMouseY = d2MouseY;
-
-  d2.step();
-  await d2.render();
-
-  const h = d2.getHash();
-  document.getElementById('d2frame').textContent = d2.frame;
-  document.getElementById('d2hash').textContent = h.slice(0, 32) + '…';
-  document.getElementById('d2snaps').textContent = d2Snapshots.length;
-
-  // Auto-record snapshot every N frames
-  if (d2Recording && d2.frame % 3 === 0) {
-    d2Snapshots.push(d2.snapshot());
-    updateD2Scrub();
-  }
-
-  d2AnimId = requestAnimationFrame(d2Loop);
-}
-
-window.d2Reset = async () => {
-  d2Recording = false;
-  d2Replaying = false;
-  d2ReplayIdx = 0;
-  d2Snapshots = [];
-  await d2.reset();
-  d2.spawn(48, 10, 20);
-  for (const [x, y, r] of D2_DROPS) d2.spawn(x, y, r);
-  d2Snapshots = [d2.snapshot()];
-  updateD2Scrub();
-  document.getElementById('d2recBtn').textContent = '⏺️ Record';
-  document.getElementById('d2playBtn').textContent = '▶️ Replay';
-};
-
-window.d2Record = () => {
-  d2Recording = !d2Recording;
-  d2Replaying = false;
-  document.getElementById('d2recBtn').textContent = d2Recording ? '⏹️ Stop' : '⏺️ Record';
-  if (d2Recording) {
-    d2Snapshots = [d2.snapshot()];
-    updateD2Scrub();
-  }
-};
-
-window.d2Play = () => {
-  if (d2Snapshots.length <= 1) {
-    toast('Record some frames first!');
-    return;
-  }
-  d2Replaying = !d2Replaying;
-  d2ReplayIdx = 0;
-  d2Recording = false;
-  document.getElementById('d2playBtn').textContent = d2Replaying ? '⏹️ Stop' : '▶️ Replay';
-  document.getElementById('d2recBtn').textContent = '⏺️ Record';
-};
-
-window.d2Scrub = (val) => {
-  const idx = parseInt(val);
-  if (d2Snapshots[idx]) {
-    d2Replaying = false;
-    d2.restore(d2Snapshots[idx]);
-    d2.render();
-    document.getElementById('d2scrubVal').textContent = idx;
-    document.getElementById('d2frame').textContent = idx;
-  }
-};
-
-// Mouse events for push
-d2canvas.addEventListener('mousedown', (e) => {
-  d2MouseDown = true;
-  d2MouseX = e.clientX;
-  d2MouseY = e.clientY;
-  d2LastMouseX = e.clientX;
-  d2LastMouseY = e.clientY;
-});
-d2canvas.addEventListener('mousemove', (e) => {
-  d2MouseX = e.clientX;
-  d2MouseY = e.clientY;
-});
-d2canvas.addEventListener('mouseup', () => { d2MouseDown = false; });
-d2canvas.addEventListener('mouseleave', () => { d2MouseDown = false; });
-
-// Touch events
-d2canvas.addEventListener('touchstart', (e) => {
-  e.preventDefault();
-  d2MouseDown = true;
-  d2MouseX = e.touches[0].clientX;
-  d2MouseY = e.touches[0].clientY;
-  d2LastMouseX = e.touches[0].clientX;
-  d2LastMouseY = e.touches[0].clientY;
-});
-d2canvas.addEventListener('touchmove', (e) => {
-  e.preventDefault();
-  d2MouseX = e.touches[0].clientX;
-  d2MouseY = e.touches[0].clientY;
-});
-d2canvas.addEventListener('touchend', () => { d2MouseDown = false; });
-
-// ──────────────────────────────────────────────────────────────────────
-// Hero video — only revealed if assets/hero.mp4 is actually present.
-// (Darien records a water-splash loop for this slot; absent the file, the
-// gradient is the whole treatment and nothing 404s in view.)
-// ──────────────────────────────────────────────────────────────────────
-(() => {
-  const v = document.getElementById('heroVideo');
-  if (!v) return;
-  v.addEventListener('canplay', () => {
-    v.style.display = 'block';
-    v.play().catch(() => { v.style.display = 'none'; });
+async function makeRenderer(demo, cv, opts = {}) {
+  fitCanvas(cv);
+  return createRenderer(demo.engine.device, cv, demo.engine, {
+    mode: 'water', bgStyle: 'night', drawWalls: false, fitMode: 'contain',
+    ...opts,
   });
-  v.addEventListener('error', () => { v.style.display = 'none'; }, true);
-  const src = v.querySelector('source');
-  if (src) src.addEventListener('error', () => { v.style.display = 'none'; });
-})();
-
-// ──────────────────────────────────────────────────────────────────────
-// Utility
-// ──────────────────────────────────────────────────────────────────────
-function toast(msg) {
-  const el = document.getElementById('toast');
-  el.textContent = msg;
-  el.classList.add('show');
-  setTimeout(() => el.classList.remove('show'), 2000);
 }
-window.toast = toast;
 
-// ──────────────────────────────────────────────────────────────────────
-// Start
-// ──────────────────────────────────────────────────────────────────────
-Promise.all([d1Init(), d2Init()]).then(() => {
-  console.log('SunaEngine demos ready');
-}).catch(err => {
-  console.error('Demo init failed:', err);
-  document.body.innerHTML += `<div style="padding:40px;text-align:center;color:#f66;">
-    <h2>WebGPU Required</h2>
-    <p>${err.message}</p>
-    <p style="margin-top:16px;">Please use Chrome 113+, Edge 113+, or Firefox Nightly with <code>dom.webgpu.enabled</code>.</p>
-  </div>`;
-});
+/** Pointer position -> world ticks. Panels are 16:9 = the 128x72 wu domain,
+ *  and fitMode 'contain' on a same-aspect canvas is an exact linear map. */
+function pointerToWorld(cv, e, yMin = 5, yMax = 64) {
+  const r = cv.getBoundingClientRect();
+  const u = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+  const v = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
+  return {
+    x: wu(Math.min(121, Math.max(7, u * 128))),
+    y: wu(Math.min(yMax, Math.max(yMin, v * 72))),
+  };
+}
+
+function holdButton(btn, state, key) {
+  const down = (e) => { e.preventDefault(); state[key] = true; btn.classList.add('held');
+                        btn.setPointerCapture?.(e.pointerId); };
+  const up = () => { state[key] = false; btn.classList.remove('held'); };
+  btn.addEventListener('pointerdown', down);
+  btn.addEventListener('pointerup', up);
+  btn.addEventListener('pointercancel', up);
+  btn.addEventListener('lostpointercapture', up);
+}
+
+function noWebGPU(hostId) {
+  const host = $(hostId);
+  host.innerHTML = '<div class="nogpu">This figure runs the engine on your GPU and needs ' +
+    'WebGPU — Chrome or Edge 113+, or Safari 26. The text and the ' +
+    '<a href="https://github.com/DARIENBATHALTER/sunaengine">source</a> stand on their own.</div>';
+}
+
+// ---------------------------------------------------------------------------
+// Figure 1 — the twins
+// ---------------------------------------------------------------------------
+const T = {
+  ready: false, visible: true, a: null, b: null, rA: null, rB: null,
+  dropping: false, frame: 0, digestBusy: false, lastEqual: null,
+};
+
+/** The opening pour: a jet from the left wall, wholly precomputed, so both
+ *  sims receive the schedule by construction rather than by synchronization.
+ *  200 events x 8 particles over 400 substeps = 1600 particles. */
+function pourSchedule() {
+  const evs = [];
+  for (let i = 0; i < 200; i++) {
+    evs.push({
+      substep: i * 2,
+      particles: makeDroplet(wu(11), wu(22), 4, 2, wu(0.55), wu(-0.05)),
+    });
+  }
+  return evs;
+}
+
+async function bootTwins() {
+  const cvA = $('cvA'), cvB = $('cvB');
+  T.a = await bootWaterDemo({ scene: 'empty' });
+  T.b = await bootWaterDemo({ scene: 'empty' });
+  // diagnostic 4 = curl of the velocity field — the swirl read-out. Strength
+  // tuned well below the instrument default so it reads as a glow behind
+  // glassy water, not as a false-colour plot.
+  T.rA = await makeRenderer(T.a, cvA, { diagnosticStrength: 0.22 });
+  T.rB = await makeRenderer(T.b, cvB, { diagnosticStrength: 0.22 });
+  T.rA.setDiagnostic(4);
+  T.rB.setDiagnostic(4);
+  const pour = pourSchedule();
+  T.a.injectWater(pour);
+  T.b.injectWater(pour);
+  holdButton($('dropTwins'), T, 'dropping');
+  T.ready = true;
+}
+
+function twinsScheduleDrop() {
+  // One droplet per frame while held, at the CURRENT substep — both sims are
+  // in lockstep, so this is one event in one schedule, fed to both.
+  const s = T.a.substep;
+  const drop = makeDroplet(wu(64), wu(7), 3, 3, 0, wu(0.25));
+  T.a.injectWater({ substep: s, particles: drop });
+  T.b.injectWater({ substep: s, particles: drop });
+}
+
+async function twinsDigest() {
+  if (T.digestBusy) return;
+  T.digestBusy = true;
+  const substep = T.a.substep;
+  // Both encodes are submitted in this same task, at the same substep.
+  const [da, db] = await Promise.all([T.a.digest(), T.b.digest()]);
+  T.digestBusy = false;
+  const equal = da === db;
+  T.lastEqual = equal;
+  $('hashA').textContent = da;
+  $('hashB').textContent = db;
+  $('hashA').className = 'hash ' + (equal ? 'agree' : 'disagree');
+  $('hashB').className = 'hash ' + (equal ? 'agree' : 'disagree');
+  const v = $('twinsVerdict');
+  if (equal) {
+    v.className = 'verdict';
+    v.innerHTML = '<span class="dot">&#9679;</span> digests identical &middot; substep ' + fmtN(substep);
+  } else {
+    v.className = 'verdict bad';
+    v.textContent = 'DIVERGENCE — this should be impossible; please file an issue';
+  }
+  $('npA').textContent = fmtN(T.a.n) + ' / ' + fmtN(CAP);
+  $('npB').textContent = fmtN(T.b.n) + ' / ' + fmtN(CAP);
+}
+
+function twinsTick() {
+  if (!T.ready || !T.visible) return;
+  fitCanvas($('cvA')); fitCanvas($('cvB'));
+  if (T.dropping) twinsScheduleDrop();
+  T.a.step(STEPS);
+  T.b.step(STEPS);
+  T.rA.draw();
+  T.rB.draw();
+  if (++T.frame % DIGEST_EVERY === 0 || T.frame === 6) twinsDigest();
+}
+
+// ---------------------------------------------------------------------------
+// Figure 2 — the replay pool
+// ---------------------------------------------------------------------------
+const P = {
+  ready: false, visible: true, demo: null, r: null,
+  mode: 'live',            // live | arming | recording | finishing | replay | scrub
+  dropping: false, frame: 0, digestBusy: false,
+  pendingDrops: [],        // interactions queued while recording arms
+  doc: null, sunarText: '',
+  keyframes: [],           // [{ substep, snap }]
+  capturing: false, replayMax: 0,
+};
+
+async function bootPool() {
+  const cv = $('cvP');
+  P.demo = await bootWaterDemo({ scene: 'pool', poolW: 100, poolH: 12 });
+  P.r = await makeRenderer(P.demo, cv);
+  holdButton($('dropPool'), P, 'dropping');
+
+  cv.addEventListener('pointerdown', (e) => { e.preventDefault(); poolPointer(e); });
+  cv.addEventListener('pointermove', (e) => { if (e.buttons) poolPointer(e); });
+  // “the moment their mouse leaves the window”
+  document.addEventListener('mouseout', (e) => {
+    if (!e.relatedTarget && (P.mode === 'recording')) finishRecording();
+  });
+  $('replayNow').addEventListener('click', () => {
+    if (P.mode === 'recording') finishRecording();
+  });
+  $('scrub').addEventListener('input', (e) => {
+    if (P.mode === 'replay') P.mode = 'scrub';        // grabbing it interrupts
+    if (P.mode === 'scrub') scrubTo(Number(e.target.value));
+  });
+  P.ready = true;
+  setPoolMode('live');
+}
+
+function setPoolMode(m) {
+  P.mode = m;
+  const el = $('poolMode');
+  el.className = 'mode' + (m === 'recording' ? ' rec' : (m === 'replay' || m === 'scrub') ? ' replay' : '');
+  el.textContent = m === 'live' ? 'live'
+    : m === 'arming' ? 'starting recording…'
+    : m === 'recording' ? '● recording — substep ' + fmtN(P.demo.substep)
+    : m === 'finishing' ? 'closing journal…'
+    : m === 'replay' ? 'replay — from the .sunar journal'
+    : 'scrub — drag; reverse replays from the nearest keyframe';
+  $('replayNow').disabled = m !== 'recording';
+}
+
+function poolPointer(e) {
+  const p = pointerToWorld($('cvP'), e, 5, 48);
+  queueDrop({ substep: null, at: p, w: 2, h: 2, vy: wu(0.2) });
+}
+
+/** All interactions funnel here. In live mode the first one arms recording;
+ *  drops queued while arming are scheduled the instant the journal is live. */
+function queueDrop(d) {
+  if (P.mode === 'replay' || P.mode === 'finishing') return;
+  if (P.mode === 'scrub') resumeLiveFromScrub();
+  P.pendingDrops.push(d);
+  if (P.mode === 'live') armRecording();
+}
+
+async function armRecording() {
+  setPoolMode('arming');
+  await P.demo.startRecording();     // normalizes onto the replay's load boundary
+  P.keyframes = [];
+  setPoolMode('recording');
+}
+
+function flushDrops() {
+  if (!P.pendingDrops.length) return;
+  // At most one canvas drop per frame reaches the schedule (the last), plus
+  // the hold-button spout — enough to sculpt with, cheap to journal.
+  const drops = P.pendingDrops.splice(0);
+  const last = drops[drops.length - 1];
+  const s = P.demo.substep;
+  P.demo.injectWater({
+    substep: s,
+    particles: makeDroplet(last.at.x, last.at.y, last.w, last.h, 0, last.vy),
+  });
+}
+
+async function finishRecording() {
+  if (P.mode !== 'recording') return;
+  setPoolMode('finishing');
+  const { text, doc } = await P.demo.stopRecording();
+  P.doc = doc;
+  P.sunarText = text;
+  beginReplay();
+}
+
+function beginReplay() {
+  const doc = P.doc;
+  P.demo.restore(doc);               // the journal's load boundary, substep 0
+  for (const e of doc.events) {
+    if (e.type === 'inject') P.demo.injectWater({ substep: e.frame, particles: e.particles });
+  }
+  P.keyframes = [{ substep: 0, snap: doc }];
+  P.replayMax = 0;
+  const sc = $('scrub');
+  sc.max = String(doc.durationSubsteps);
+  sc.value = '0';
+  $('scrubRow').classList.add('on');
+  $('scrubLen').textContent = fmtN(doc.durationSubsteps) + ' substeps · journal ' +
+    (P.sunarText.length / 1024).toFixed(1) + ' kB · ' + doc.events.length + ' events';
+  $('poolVerdict').className = 'verdict';
+  $('poolVerdict').textContent = '';
+  setPoolMode('replay');
+}
+
+/** One replay tick: capture a keyframe when due, else advance ≤ STEPS substeps. */
+async function replayTick() {
+  if (P.capturing) return;
+  const d = P.demo, dur = P.doc.durationSubsteps;
+  if (d.substep % KEY_EVERY === 0 &&
+      P.keyframes[P.keyframes.length - 1].substep < d.substep) {
+    P.capturing = true;
+    const snap = await d.snapshot();          // exact: carries derived scratch
+    P.keyframes.push({ substep: snap.substep, snap });
+    P.capturing = false;
+    if (P.mode !== 'replay') return;          // interrupted mid-capture
+  }
+  const boundary = (Math.floor(d.substep / KEY_EVERY) + 1) * KEY_EVERY;
+  const n = Math.min(STEPS, boundary - d.substep, dur - d.substep);
+  if (n > 0) d.step(n);
+  P.replayMax = Math.max(P.replayMax, d.substep);
+  $('scrub').value = String(d.substep);
+  $('scrubPos').textContent = 'substep ' + fmtN(d.substep);
+  if (d.substep >= dur) await replayDone();
+}
+
+async function replayDone() {
+  const replayDigest = await P.demo.digest();
+  const recorded = P.doc.final.digest;
+  const v = $('poolVerdict');
+  if (replayDigest === recorded) {
+    v.className = 'verdict';
+    v.innerHTML = '<span class="dot">&#9679;</span> replay digest = recorded digest' +
+      '<span class="sub">' + recorded + '</span>';
+  } else {
+    v.className = 'verdict bad';
+    v.textContent = 'REPLAY MISMATCH — this should be impossible; please file an issue';
+  }
+  $('hashP').textContent = replayDigest;
+  $('hashP').className = 'hash agree';
+  setPoolMode('scrub');
+}
+
+/** Deterministic scrub, both directions: restore the nearest keyframe at or
+ *  before t, re-arm the journal from there, step forward. Fully synchronous. */
+function scrubTo(t) {
+  const dur = P.doc.durationSubsteps;
+  t = Math.max(0, Math.min(Math.min(dur, Math.max(P.replayMax, 0)), Math.round(t)));
+  let k = P.keyframes[0];
+  for (const kf of P.keyframes) { if (kf.substep <= t) k = kf; else break; }
+  P.demo.restore(k.snap);
+  for (const e of P.doc.events) {
+    if (e.type === 'inject' && e.frame >= P.demo.substep && e.frame < t) {
+      P.demo.injectWater({ substep: e.frame, particles: e.particles });
+    }
+  }
+  if (t > P.demo.substep) P.demo.step(t - P.demo.substep);
+  P.r.draw();
+  $('scrub').value = String(t);
+  $('scrubPos').textContent = 'substep ' + fmtN(t);
+  return t;
+}
+
+function resumeLiveFromScrub() {
+  $('scrubRow').classList.remove('on');
+  $('poolVerdict').textContent = '';
+  P.doc = null; P.keyframes = [];
+  setPoolMode('live');       // the interaction that called us re-arms recording
+}
+
+async function poolDigest() {
+  if (P.digestBusy) return;
+  P.digestBusy = true;
+  const hex = await P.demo.digest();
+  P.digestBusy = false;
+  $('hashP').textContent = hex;
+  $('hashP').className = 'hash';
+  $('npP').textContent = fmtN(P.demo.n) + ' / ' + fmtN(CAP);
+}
+
+function poolTick() {
+  if (!P.ready || !P.visible) return;
+  fitCanvas($('cvP'));
+  if (P.mode === 'replay') { replayTick(); P.r.draw(); return; }
+  if (P.mode === 'scrub' || P.mode === 'arming' || P.mode === 'finishing') return;
+  flushDrops();
+  if (P.dropping) queueDrop({ at: { x: wu(64), y: wu(8) }, w: 3, h: 3, vy: wu(0.25) });
+  P.demo.step(STEPS);
+  P.r.draw();
+  if (P.mode === 'recording') setPoolMode('recording');   // refresh substep readout
+  if (++P.frame % DIGEST_EVERY === 0 || P.frame === 6) poolDigest();
+}
+
+// ---------------------------------------------------------------------------
+// visibility: pause off-screen and when the tab is hidden (battery-kind)
+// ---------------------------------------------------------------------------
+function watchVisibility() {
+  const io = new IntersectionObserver((entries) => {
+    for (const en of entries) {
+      if (en.target.id === 'fig1') T.visible = en.isIntersecting;
+      if (en.target.id === 'fig2') P.visible = en.isIntersecting;
+    }
+  }, { threshold: 0.02 });
+  io.observe($('fig1'));
+  io.observe($('fig2'));
+}
+
+// ---------------------------------------------------------------------------
+// boot
+// ---------------------------------------------------------------------------
+function frameLoop() {
+  requestAnimationFrame(frameLoop);
+  if (document.hidden) return;
+  twinsTick();
+  poolTick();
+}
+
+async function main() {
+  if (!('gpu' in navigator)) { noWebGPU('twinsHost'); noWebGPU('poolHost'); return false; }
+  try {
+    await bootTwins();
+  } catch (e) {
+    console.warn('[sunaengine] twins unavailable:', e?.message || e);
+    noWebGPU('twinsHost');
+  }
+  try {
+    await bootPool();
+  } catch (e) {
+    console.warn('[sunaengine] pool unavailable:', e?.message || e);
+    noWebGPU('poolHost');
+  }
+  if (!T.ready && !P.ready) return false;
+  watchVisibility();
+  if (!AUTOTEST) frameLoop();
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// ?autotest=1 — drives the page's own machinery deterministically and reports
+// through window.__RESULT__ for test/harness/cdp.mjs. Not reachable otherwise.
+// ---------------------------------------------------------------------------
+async function autotest() {
+  const R = { pass: false, errors: window.__ERRORS__ };
+  const booted = await main();
+  if (!booted) { R.error = 'boot failed'; return R; }
+
+  const jpeg = (capRes, w = 360) => {
+    if (!capRes) return null;
+    const src = document.createElement('canvas');
+    src.width = capRes.w; src.height = capRes.h;
+    src.getContext('2d').putImageData(new ImageData(capRes.rgba, capRes.w, capRes.h), 0, 0);
+    const dst = document.createElement('canvas');
+    dst.width = w; dst.height = Math.round(w * capRes.h / capRes.w);
+    dst.getContext('2d').drawImage(src, 0, 0, dst.width, dst.height);
+    return dst.toDataURL('image/jpeg', 0.72);
+  };
+
+  // ---- twins: step through the pour, digest twice, prove equal + changing --
+  T.a.step(240); T.b.step(240);
+  const [t1a, t1b] = await Promise.all([T.a.digest(), T.b.digest()]);
+  T.a.step(160); T.b.step(160);
+  const [t2a, t2b] = await Promise.all([T.a.digest(), T.b.digest()]);
+  T.rA.draw(); T.rB.draw();
+  await twinsDigest();
+  R.twins = {
+    substep: T.a.substep, n: T.a.n,
+    h1a: t1a, h1b: t1b, h2a: t2a, h2b: t2b,
+    equalAt240: t1a === t1b, equalAt400: t2a === t2b, hashChanged: t1a !== t2a,
+    domEqualShown: T.lastEqual === true,
+    shot: jpeg(await T.rA.capture()),
+  };
+
+  // ---- pool: hash moves over time ------------------------------------------
+  const d0 = await P.demo.digest();
+  P.demo.step(120);
+  const d1 = await P.demo.digest();
+  P.r.draw();
+
+  // ---- record -> auto-replay -> byte-identity, on the page's own paths -----
+  queueDrop({ at: { x: wu(40), y: wu(12) }, w: 2, h: 2, vy: wu(0.2) });   // arms recording
+  while (P.mode === 'arming') await new Promise((r) => setTimeout(r, 10));
+  flushDrops();
+  for (let i = 1; i <= 5; i++) {
+    P.demo.injectWater({
+      substep: P.demo.substep + i * 16,
+      particles: makeDroplet(wu(60 + i * 4), wu(10), 2, 2, 0, wu(0.2)),
+    });
+  }
+  P.demo.step(120);
+  await finishRecording();                        // -> beginReplay, mode 'replay'
+  while (P.mode === 'replay') { await replayTick(); }
+  const recorded = P.doc.final.digest;
+  const replayed = $('hashP').textContent;
+  R.replay = {
+    durationSubsteps: P.doc.durationSubsteps,
+    keyframes: P.keyframes.length,
+    recorded, replayed, identical: recorded === replayed,
+    shot: jpeg(await P.r.capture()),
+  };
+
+  // ---- scrub determinism: same target, approached from both directions -----
+  const dur = P.doc.durationSubsteps;
+  const tProbe = Math.min(37, dur - 1);
+  scrubTo(tProbe); const s1 = await P.demo.digest();
+  scrubTo(dur - 2);
+  scrubTo(tProbe); const s2 = await P.demo.digest();
+  R.scrub = { target: tProbe, fromLeft: s1, fromRight: s2, identical: s1 === s2 };
+  R.pool = { d0, d1, hashChanged: d0 !== d1 };
+
+  R.pass = R.errors.length === 0 &&
+    R.twins.equalAt240 && R.twins.equalAt400 && R.twins.hashChanged && R.twins.domEqualShown &&
+    R.pool.hashChanged && R.replay.identical && R.scrub.identical;
+  return R;
+}
+
+if (AUTOTEST) {
+  window.__RESULT__ = autotest();
+} else {
+  main();
+}
 </script>
 </body>
 </html>
