@@ -1,3 +1,8 @@
+// SunaEngine — real SunaBox (aether) engine code, extracted UNMODIFIED below this header
+// from aether commit e41e06f. Verify: diff <(tail -n +6 src/tables.js) <aether>/src/tables.js
+// Copyright (C) 2026 Darien Bathalter
+// SPDX-License-Identifier: AGPL-3.0-only — see LICENSE. NO WARRANTY.
+
 // ============================================================================
 // aether — src/tables.js  (implementer F, per BINDING SPEC §9.1)
 // ----------------------------------------------------------------------------

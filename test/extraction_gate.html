@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>sunaengine — extraction gate</title>
+<style>body{background:#0a0c11;color:#dbe3f0;font:13px ui-monospace,SFMono-Regular,Menlo,monospace;padding:20px}
+pre{white-space:pre-wrap}</style></head>
+<body><pre id="out">running…</pre>
+<script type="module">
+// ============================================================================
+// SunaEngine — THE EXTRACTION GATE
+// Copyright (C) 2026 Darien Bathalter — AGPL-3.0-only, see LICENSE.
+//
+// Proves the engine shipped in THIS repo is the real aether engine, not a
+// reimplementation. Two halves:
+//
+//   1. CROSS-REPO DETERMINISM PROOF. Runs the frozen determinism-gate scene
+//      (dambreak_v1) for N substeps with exactly the parameters aether's own
+//      test/determinism.html uses (maxParticles 8192, chain on, submitBatch
+//      25, digests at checkpoints 1/10/100/1000/...). The reported `chain`,
+//      `checkpoints` and `finalDigest` must be BYTE-IDENTICAL to the values
+//      aether's own harness reports for the same substep count. The compare is
+//      done outside this page — see test/extraction_gate.md for the exact
+//      commands. If they differ, the extraction is wrong. Full stop.
+//
+//   2. HARNESS PROOF (the demos' machinery). Twin sims fed one injection
+//      schedule stay chain-identical (Demo 1's mechanism); a recorded run
+//      replayed from its .sunar reproduces its final digest byte-for-byte,
+//      and a one-tick perturbation of the schedule does NOT (Demo 2's gate,
+//      with its negative control).
+// ============================================================================
+import { createEngine, makeScene } from '../src/engine.js';
+import { bootWaterDemo, replayFromSunar, makeDroplet, wu } from '../src/demo_boot.js';
+
+const Q = new URLSearchParams(location.search);
+const SUBSTEPS = Number(Q.get('substeps') ?? 1000);
+const CHECKPOINTS = [1, 10, 100, 1000, 10000].filter((c) => c <= SUBSTEPS);
+
+const log = [];
+const say = (s) => { log.push(s); document.getElementById('out').textContent = log.join('\n'); };
+
+window.__RESULT__ = (async () => {
+  const R = { pass: false, substeps: SUBSTEPS, log };
+
+  // ---- 1. cross-repo determinism proof -------------------------------------
+  {
+    const eng = await createEngine({ canvas: null, maxParticles: 8192, chain: true, submitBatch: 25 });
+    eng.loadScene(makeScene('dambreak_v1'));
+    const cps = {};
+    let done = 0;
+    for (const c of CHECKPOINTS) { eng.step(c - done); done = c; cps[String(c)] = (await eng.digest()).hex; }
+    if (done < SUBSTEPS) { eng.step(SUBSTEPS - done); done = SUBSTEPS; }
+    const finalDigest = (await eng.digest()).hex;
+    const chain = await eng.chainHex();
+    const dbg = [...(await eng.debugCounters())];
+    await eng.checkErrors();
+    R.crossRepo = { scene: 'dambreak_v1', n: eng.n, nFluid: eng.nFluid,
+                    substeps: done, checkpoints: cps, finalDigest, chain, dbg };
+    R.dbgAllZero = dbg.every((v) => v === 0);
+    eng.destroy();
+    say(`dambreak_v1 x ${done}: chain ${chain.slice(0, 16)}…  final ${finalDigest.slice(0, 16)}…  dbg [${dbg}]`);
+  }
+
+  // ---- 2a. twins: one schedule, two sims, one chain (Demo 1's mechanism) ---
+  {
+    const schedule = [];
+    for (let s = 0; s < 120; s += 8) {
+      schedule.push({ substep: s, particles: makeDroplet(wu(64), wu(10), 3, 3, 0, wu(0.2)) });
+    }
+    const run = async () => {
+      const d = await bootWaterDemo({ scene: 'pool' });
+      d.injectWater(schedule);
+      d.step(240);
+      const out = { chain: await d.chainHex(), digest: await d.digest(), n: d.n, nFluid: d.nFluid };
+      await d.checkErrors(); d.destroy();
+      return out;
+    };
+    const a = await run(), b = await run();
+    R.twins = { a, b, chainsEqual: a.chain === b.chain, digestsEqual: a.digest === b.digest };
+    say(`twins: ${a.chain.slice(0, 16)}… vs ${b.chain.slice(0, 16)}… — ` +
+        (R.twins.chainsEqual ? 'BIT-EXACT' : 'DIVERGED'));
+  }
+
+  // ---- 2b. record -> replay byte-identity, with negative control -----------
+  {
+    const d = await bootWaterDemo({ scene: 'pool' });
+    d.step(60);                                  // settle a little first
+    await d.startRecording();
+    for (let s = d.substep; s < d.substep + 100; s += 10) {
+      d.injectWater({ substep: s, particles: makeDroplet(wu(40), wu(12), 2, 2) });
+    }
+    d.step(160);
+    const { text, doc } = await d.stopRecording();
+    const liveDigest = doc.final.digest;
+    await d.checkErrors(); d.destroy();
+
+    const r = await replayFromSunar(text);
+    r.step(r.replayDoc.durationSubsteps);
+    const replayDigest = await r.digest();
+    await r.checkErrors(); r.destroy();
+
+    // negative control: one tick on one scheduled particle must diverge
+    const mutated = JSON.parse(text);
+    mutated.events[0].particles[0].x += 1;
+    const m = await replayFromSunar(JSON.stringify(mutated));
+    m.step(m.replayDoc.durationSubsteps);
+    const mutatedDigest = await m.digest();
+    await m.checkErrors(); m.destroy();
+
+    R.replay = { liveDigest, replayDigest, mutatedDigest,
+                 sunarBytes: text.length,
+                 identical: replayDigest === liveDigest,
+                 controlDiverged: mutatedDigest !== liveDigest };
+    say(`replay: live ${liveDigest.slice(0, 16)}… replay ${replayDigest.slice(0, 16)}… — ` +
+        (R.replay.identical ? 'BYTE-IDENTICAL' : 'MISMATCH') +
+        `; one-tick control ${R.replay.controlDiverged ? 'diverged (good)' : '*** DID NOT DIVERGE ***'}`);
+  }
+
+  // ---- 2c. scrub keyframe: snapshot mid-run, rejoin the timeline exactly ---
+  {
+    const d = await bootWaterDemo({ scene: 'pool' });
+    d.step(60);
+    const key = await d.snapshot();          // exact: carries derived scratch
+    d.step(40);
+    const ahead = await d.digest();
+    d.restore(key);
+    d.step(40);
+    const rejoined = await d.digest();
+    await d.checkErrors(); d.destroy();
+    R.keyframe = { ahead, rejoined, exact: rejoined === ahead };
+    say(`keyframe: ahead ${ahead.slice(0, 16)}… rejoined ${rejoined.slice(0, 16)}… — ` +
+        (R.keyframe.exact ? 'BIT-EXACT REJOIN' : 'MISMATCH'));
+  }
+
+  R.pass = R.dbgAllZero && R.twins.chainsEqual && R.twins.digestsEqual &&
+           R.replay.identical && R.replay.controlDiverged && R.keyframe.exact;
+  say(R.pass ? 'IN-PAGE CHECKS PASS — now compare crossRepo.chain against aether (see extraction_gate.md)'
+             : 'IN-PAGE CHECKS FAILED');
+  return R;
+})();
+</script>
+</body>
+</html>
