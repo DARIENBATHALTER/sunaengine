@@ -25,7 +25,7 @@
     --ink:    #eae7de;
     --ink-2:  #a29d90;
     --hair:   #242c3d;
-    --accent: #d4552a;   /* the one accent, lifted for dark contrast */
+    --accent: #4ab3f2;   /* the one accent — the old site's azure */
     --bad:    #e0554b;
     --serif: Charter, 'Iowan Old Style', Georgia, 'Times New Roman', serif;
     --sans:  -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
@@ -36,13 +36,38 @@
   body {
     background: var(--paper);
     color: var(--ink);
-    font: 400 1.06rem/1.62 var(--serif);
+    font: 400 1.02rem/1.65 var(--sans);
     padding-bottom: 6rem;
   }
   .prose  { max-width: 42rem;  margin: 0 auto; padding: 0 1.25rem; }
   .figure { max-width: 68rem;  margin: 0 auto; padding: 0 1.25rem; }
 
-  header { padding: 3.2rem 0 0; }
+  /* The old site's slim fixed titlebar, kept: logo, two-tone wordmark, links. */
+  nav.top {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 1.25rem; height: 52px;
+    background: rgba(10, 14, 22, 0.74);
+    -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--hair);
+  }
+  .navBrand { display: flex; align-items: center; gap: 0.55rem;
+              font: 700 0.95rem/1 var(--sans); color: var(--ink);
+              letter-spacing: 0.01em; text-decoration: none; }
+  .navBrand img { width: 26px; height: 26px; }
+  .navBrand b { color: var(--accent); font-weight: 700; }
+  .navLinks { display: flex; align-items: center; gap: 1.3rem; }
+  .navLinks a, .navBrand { border-bottom: none; }
+  .navLinks a { font: 500 0.84rem/1 var(--sans); color: var(--ink-2);
+                text-decoration: none; }
+  .navLinks a:hover { color: var(--ink); }
+  .navLinks a.gh { border: 1px solid var(--hair); border-radius: 999px;
+                   padding: 0.45em 1em; color: var(--ink); }
+  .navLinks a.gh:hover { border-color: var(--ink-2); }
+  section, [id] { scroll-margin-top: 64px; }
+  @media (max-width: 640px) { .navLinks a:not(.gh) { display: none; } }
+
+  header.prose { padding: 7.2rem 1.25rem 0; }
   /* The hero: the liquid recording breathes behind the opening prose, then
      dissolves into the page's own ground before the text gets dense. */
   .hero { position: relative; overflow: hidden; }
@@ -56,10 +81,17 @@
     background: linear-gradient(180deg, rgba(10,14,22,0.30) 0%,
                 rgba(10,14,22,0.62) 55%, var(--paper) 96%);
   }
-  .hero header { position: relative; z-index: 2; }
-  .brand { display: flex; align-items: center; gap: 0.9rem; }
-  .brand img { width: 46px; height: 46px; display: block;
-               filter: drop-shadow(0 2px 10px rgba(0,0,0,0.5)); }
+  .hero header { position: relative; z-index: 2; text-align: center; }
+  .hero header.prose { max-width: 52rem; }
+  .heroMark { width: 96px; height: 96px; display: block; margin: 0 auto;
+              filter: drop-shadow(0 0 26px rgba(74, 179, 242, 0.5)); }
+  .hero .lead { margin-left: auto; margin-right: auto; }
+  .chips { display: flex; flex-wrap: wrap; justify-content: center;
+           gap: 0.55rem; margin-top: 1.6rem; }
+  .chips span { font: 500 0.78rem/1 var(--sans); color: var(--ink-2);
+                border: 1px solid var(--hair); border-radius: 999px;
+                padding: 0.5em 1em; background: rgba(10, 14, 22, 0.4); }
+  .chips span.hot { color: var(--accent); border-color: var(--accent); }
   .wordmark {
     font: 600 0.82rem/1 var(--sans);
     letter-spacing: 0.34em;
@@ -68,15 +100,16 @@
   }
   .wordmark b { color: var(--accent); font-weight: 600; }
   h1 {
-    font: 400 clamp(1.9rem, 4.6vw, 2.9rem)/1.18 var(--serif);
-    letter-spacing: -0.012em;
-    margin: 0.9rem 0 1.2rem;
-    max-width: 30ch;
+    font: 800 clamp(2.3rem, 5.4vw, 3.4rem)/1.12 var(--sans);
+    letter-spacing: -0.022em;
+    margin: 1.1rem auto 1.2rem;
   }
+  h1 .l2 { color: var(--accent); text-shadow: 0 0 26px rgba(74, 179, 242, 0.45); }
   .lead { font-size: 1.13rem; color: var(--ink); }
   .lead + .lead { margin-top: 0.9rem; }
   .env-note {
-    margin-top: 1.5rem;
+    text-align: center;
+    margin-top: 1.1rem;
     font: 400 0.78rem/1.5 var(--sans);
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -88,7 +121,7 @@
   hr.rule { border: 0; border-top: 1px solid var(--hair); margin: 2.6rem auto; max-width: 68rem; }
 
   h2 {
-    font: 600 0.82rem/1.4 var(--sans);
+    font: 700 1.35rem/1.3 var(--sans);
     letter-spacing: 0.22em;
     text-transform: uppercase;
     color: var(--accent);
@@ -275,7 +308,7 @@
     margin: 0.9rem 0;
   }
   pre .c { color: #8b867a; }
-  a { color: var(--accent); text-decoration: none; border-bottom: 1px solid #d9b3a2; }
+  a { color: var(--accent); text-decoration: none; border-bottom: 1px solid rgba(74, 179, 242, 0.35); }
   a:hover { border-bottom-color: var(--accent); }
 
   footer {
@@ -300,6 +333,16 @@
 </head>
 <body>
 
+<nav class="top">
+  <a class="navBrand" href="#"><img src="assets/logo.png" alt="">
+    <span><b>Suna</b>Engine</span></a>
+  <div class="navLinks">
+    <a href="#fig1">The Twins</a>
+    <a href="#fig2">Smooth Rewind</a>
+    <a href="#how">How</a>
+    <a class="gh" href="https://github.com/DARIENBATHALTER/sunaengine">GitHub</a>
+  </div>
+</nav>
 <div class="hero">
 <div class="poster" aria-hidden="true"></div>
 <video id="heroVid" autoplay muted loop playsinline preload="metadata"
@@ -308,11 +351,9 @@
 </video>
 <div class="shade" aria-hidden="true"></div>
 <header class="prose">
-  <div class="brand">
-    <img src="assets/logo.png" alt="SunaEngine">
-    <div class="wordmark"><b>Suna</b>Engine</div>
-  </div>
-  <h1>Every mainstream physics engine drifts. This one cannot.</h1>
+  <img class="heroMark" src="assets/logo.png" alt="SunaEngine">
+  <h1><span class="l1">Every physics engine drifts.</span><br>
+      <span class="l2">This one cannot.</span></h1>
   <p class="lead">
     Run the same simulation on two machines and floating-point arithmetic will,
     sooner or later, disagree — different GPUs, drivers, and compilers round
@@ -326,6 +367,13 @@
     The 64 hex digits under each simulation are a 256-bit digest of the
     <em>entire</em> particle state, recomputed as it runs.
   </p>
+  <div class="chips">
+    <span class="hot">WebGPU</span>
+    <span>256-bit State Hash</span>
+    <span>Integer-Only Math</span>
+    <span>Zero Floating Point</span>
+    <span>AGPL-3.0</span>
+  </div>
   <div class="env-note">
     <span>requires WebGPU (Chrome / Edge 113+)</span>
     <span>simulates on your GPU</span>
@@ -361,9 +409,9 @@
       Two independent simulations, booted from the same scene, fed the same
       injection schedule. They never communicate and are never corrected toward
       each other; they simply compute the same thing. Water pours in from the
-      left, swirls, and settles — the background field shows the local curl of
-      the velocity field (red one way, blue the other), so you can watch the two
-      vortex systems match, eddy for eddy. And they are not hands-off:
+      left, swirls, and settles — every particle drawn as a plain
+      disc, deliberately cheap on your GPU, so what you compare is the motion
+      itself: two pours landing, piling and sloshing in perfect unison. And they are not hands-off:
       move your cursor through either pane and you stir the water — the same
       gesture is fed to both simulations as one substep-indexed schedule, so
       even your hand cannot tell them apart.
@@ -446,7 +494,7 @@
 <hr class="rule">
 
 <!-- ================= HOW ================= -->
-<section class="prose text">
+<section class="prose text" id="how">
   <h2>How</h2>
 
   <h3>Fixed point, not floating point</h3>
@@ -545,7 +593,9 @@ function fitCanvas(cv) {
 async function makeRenderer(demo, cv, opts = {}) {
   fitCanvas(cv);
   return createRenderer(demo.engine.device, cv, demo.engine, {
-    mode: 'water', bgStyle: 'night', drawWalls: false, fitMode: 'contain',
+    // 'points' (one disc per particle): three sims share this page, and the
+    // screen-space water shader x3 is a battery bill nobody asked to pay.
+    mode: 'points', bgStyle: 'night', drawWalls: false, fitMode: 'contain',
     ...opts,
   });
 }
@@ -605,13 +655,8 @@ async function bootTwins() {
   const cvA = $('cvA'), cvB = $('cvB');
   T.a = await bootWaterDemo({ scene: 'empty' });
   T.b = await bootWaterDemo({ scene: 'empty' });
-  // diagnostic 4 = curl of the velocity field — the swirl read-out. Strength
-  // tuned well below the instrument default so it reads as a glow behind
-  // glassy water, not as a false-colour plot.
-  T.rA = await makeRenderer(T.a, cvA, { diagnosticStrength: 0.22 });
-  T.rB = await makeRenderer(T.b, cvB, { diagnosticStrength: 0.22 });
-  T.rA.setDiagnostic(4);
-  T.rB.setDiagnostic(4);
+  T.rA = await makeRenderer(T.a, cvA);
+  T.rB = await makeRenderer(T.b, cvB);
   const pour = pourSchedule();
   T.a.injectWater(pour);
   T.b.injectWater(pour);
