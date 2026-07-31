@@ -140,13 +140,23 @@
   @media (max-width: 760px) { .twins { grid-template-columns: 1fr; } }
 
   .panel { min-width: 0; }
+  /* The world's outer ~1.5 wu is clamp territory — particles ride the wall
+     there and read as "stuck". The frame crops it out of view: the canvas is
+     scaled up inside an overflow-hidden box, which costs the GPU nothing and
+     keeps the pointer map exact (the rect scales with the pixels). */
+  .simframe {
+    overflow: hidden;
+    border: 1px solid var(--hair);
+    border-radius: 2px;
+    background: #05070d;
+  }
   .panel canvas, .pool canvas {
     display: block;
     width: 100%;
     aspect-ratio: 16 / 9;
     background: #05070d;
-    border: 1px solid var(--hair);
-    border-radius: 2px;
+    transform: scale(1.035);
+    transform-origin: center;
     touch-action: none;
     cursor: crosshair;
   }
@@ -424,12 +434,12 @@
   <div id="twinsHost">
     <div class="twins">
       <div class="panel">
-        <canvas id="cvA"></canvas>
+        <div class="simframe"><canvas id="cvA"></canvas></div>
         <div class="panel-label"><span>sim A</span><span class="np" id="npA">—</span></div>
         <div class="hash" id="hashA">—</div>
       </div>
       <div class="panel">
-        <canvas id="cvB"></canvas>
+        <div class="simframe"><canvas id="cvB"></canvas></div>
         <div class="panel-label"><span>sim B</span><span class="np" id="npB">—</span></div>
         <div class="hash" id="hashB">—</div>
       </div>
@@ -471,7 +481,7 @@
   </div>
 
   <div class="pool" id="poolHost">
-    <canvas id="cvP"></canvas>
+    <div class="simframe"><canvas id="cvP"></canvas></div>
     <div class="status-line">
       <span class="mode" id="poolMode">live</span>
       <span class="np" id="npP">—</span>
