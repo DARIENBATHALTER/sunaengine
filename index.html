@@ -328,6 +328,14 @@
   }
   footer .credit { font-style: italic; font-family: var(--serif); }
   .fineprint { margin-top: 0.8rem; }
+  /* §"In plain English" — the technical paragraph stays; this restates it for
+     the reader who skipped it. Darien 2026-08-01. */
+  .plain { background: var(--panel); border-left: 2px solid var(--accent);
+           border-radius: 0 4px 4px 0; padding: 0.85rem 1rem; margin-top: 0.9rem;
+           color: var(--ink-2); }
+  .plainTag { display: block; font: 600 0.72rem/1 var(--sans);
+              letter-spacing: 0.14em; text-transform: uppercase;
+              color: var(--accent); margin-bottom: 0.45rem; }
 </style>
 <script>
   /* Error collector — installed before the module loads so import/boot errors
@@ -363,29 +371,28 @@
 <div class="shade" aria-hidden="true"></div>
 <header class="prose">
   <img class="heroMark" src="assets/logo.png" alt="SunaEngine">
-  <h1><span class="l1">Every physics engine drifts.</span><br>
-      <span class="l2">This one cannot.</span></h1>
+  <h1><span class="l1">Deterministic physics</span><br>
+      <span class="l2">with bit-perfect replay.</span></h1>
   <p class="lead">
-    SunaEngine is an open-source particle physics engine that guarantees
-    <strong>bit-identical</strong> simulation output — every time, everywhere,
-    on any WebGPU-capable device. Not "close enough to look the same":
-    the same 256-bit state hash, on your laptop and on a stranger's GPU.
+    Not approximate. <em>Exact</em> — across any WebGPU-capable device.
   </p>
   <p class="lead">
-    No mainstream engine can promise that, because floating-point rounds
-    differently across GPUs and drivers, and chaos amplifies the last bit into
-    a different world. SunaEngine's solver contains no floating point at all —
-    integer fixed-point throughout — which is what makes the guarantee
-    possible. This page does not ask you to take any of it on faith: the 64
-    hex digits under each simulation are a live digest of the <em>entire</em>
-    particle state, recomputed as it runs.
+    SunaEngine is an open-source particle physics engine that produces
+    bit-identical results on every machine. Every replay reaches
+    <em>exactly</em> the same final state. Every simulation produces the
+    same 256-bit hash.
+  </p>
+  <p class="lead">
+    The demos below aren't animations. They're live simulations. Their hashes
+    are recomputed every frame, making determinism something you can see
+    instead of simply trust. Once simulations become perfectly reproducible,
+    a surprising number of things become possible.
   </p>
   <div class="chips">
     <span class="hot">WebGPU</span>
-    <span>256-bit State Hash</span>
+    <span>256-bit State Hashes</span>
     <span>Integer-Only Math</span>
-    <span>Zero Floating Point</span>
-    <span>AGPL-3.0</span>
+    <span>Open Source (AGPL-3.0)</span>
   </div>
   <div class="env-note">
     <span>requires WebGPU (Chrome / Edge 113+)</span>
@@ -420,18 +427,19 @@
 
 <!-- ================= FIGURE 1 — THE TWINS ================= -->
 <section class="figure" id="fig1">
-  <h2><span class="figno">Figure 1</span> — The Twins</h2>
+  <h2><span class="figno">Figure 1</span> — The Twin Simulations</h2>
   <div class="figintro">
     <p>
       Two independent simulations, booted from the same scene, fed the same
-      injection schedule. They never communicate and are never corrected toward
-      each other; they simply compute the same thing. Water pours in from the
-      left, swirls, and settles — every particle drawn as a plain
-      disc, deliberately cheap on your GPU, so what you compare is the motion
-      itself: two pours landing, piling and sloshing in perfect unison. And they are not hands-off:
-      move your cursor through either pane and you stir the water — the same
-      gesture is fed to both simulations as one substep-indexed schedule, so
-      even your hand cannot tell them apart.
+      inputs. They never communicate and are never corrected toward each
+      other; they simply compute the same thing. Water pours in, swirls, and
+      settles identically across both simulations.
+    </p>
+    <p>
+      Move your mouse through either simulation. Every interaction is
+      recorded as an input schedule and delivered to both worlds at the same
+      simulation step. If the engine is truly deterministic, the hashes stay
+      identical. If they ever differ, you've found a bug.
     </p>
   </div>
 
@@ -461,14 +469,14 @@
 
 <!-- ================= FIGURE 2 — THE REPLAY POOL ================= -->
 <section class="figure" id="fig2">
-  <h2><span class="figno">Figure 2</span> — Smooth Rewind</h2>
+  <h2><span class="figno">Figure 2</span> — Perfect Replay, Smooth Rewind</h2>
   <div class="figintro">
     <p>
       Particle fluids cannot be rewound. Chaos amplifies the last bit of every
       velocity, so no floating-point engine can take a splash backwards and
-      land on the world it actually came from — the errors compound in
-      reverse, too. A bit-exact engine has no such debt. Here, memory is not
-      video: the moment you touch this pool — stir it with your cursor, drop
+      land on the world it actually came from; the errors compound in
+      reverse, too. A bit-exact engine has no such debt. The moment you
+      interact with this demonstration — stir it with your cursor, drop
       water, hold the button — it starts recording a <code>.sunar</code>
       journal: the exact starting state plus your inputs, indexed by substep.
       No frames are stored.
@@ -512,42 +520,48 @@
 
 <!-- ================= HOW ================= -->
 <section class="prose text" id="uses">
-  <h2>What a bit-exact engine is for</h2>
+  <h2>What can you build with it?</h2>
   <p>
-    Determinism is not a benchmark number — it is a different set of things
-    you are allowed to build:
+    For SunaEngine, determinism is not a benchmark number; it changes what
+    software is possible to build.
   </p>
-  <p><strong>Multiplayer without state sync.</strong> When every machine
-    computes identical bits, peers exchange <em>inputs</em> instead of world
-    snapshots — a physics world's worth of state in a few bytes per frame,
-    with divergence impossible rather than corrected-for.</p>
-  <p><strong>Replays that are proofs.</strong> A recorded session is a
-    starting state plus an input journal, a few kilobytes. Its final hash can
-    be re-derived by anyone, so a leaderboard entry or a challenge run is
-    <em>verifiable</em> — there is nothing to edit that the hash will not
-    catch. Figure 2's byte-identity check is this property, live.</p>
+  <p><strong>Low-latency multiplayer physics.</strong> Every machine
+    computes the same world, so only player inputs need to be transmitted.
+    There is no drifting state to reconcile, because every simulation
+    follows the same path.</p>
+  <p><strong>Lightweight, shareable replays.</strong> A replay becomes an
+    initial state and an input journal instead of thousands of stored
+    frames. Anyone can regenerate the simulation and verify the final hash
+    independently — for challenges or leaderboards. Figure 2's
+    byte-identity check is this property, live.</p>
   <p><strong>Smooth rewind.</strong> Chaos makes particle fluids
     irreversible in floating point; with exact state and an input journal,
-    time is just an index — scrub it in either direction.</p>
-  <p><strong>Reproducible simulation.</strong> A published result can be
-    cited as (scene, inputs, hash) and re-derived exactly on any device —
-    the difference between "our simulation showed" and "run it yourself."
-    The same property makes CI trivial: the hash is a regression oracle
-    that fails loudly on a single changed bit.</p>
-  <p><strong>Training data for world models.</strong> Physics rollouts that
-    are perfectly labeled and perfectly repeatable: a corpus regenerates
-    bit-for-bit from seeds and schedules instead of being stored, and an
-    evaluation suite pins its ground truth to hashes instead of tolerances.</p>
-  <p><strong>Beyond 2D.</strong> SunaEngine simulates in 2D today, but the
-    load-bearing techniques — fixed-point PBF, round-half-to-even force
-    antisymmetry, order-independent integer accumulation — are
-    dimension-agnostic, and the spec documents them for reuse.</p>
+    rewinding doesn't just approximate the past — it actually recreates
+    it.</p>
+  <p><strong>Reproducible research.</strong> A published scene with input
+    journal and hash becomes a citable source, re-derived exactly on any
+    device. Anyone can reproduce exactly what the original author observed —
+    the difference between "our simulation showed" and "run it
+    yourself."</p>
+  <p><strong>World models.</strong> Deterministic simulations provide
+    perfectly repeatable environments for AI experimentation and training.
+    Large datasets can be regenerated from compact journals instead of
+    being stored frame-by-frame.</p>
+  <p><strong>3D simulations and beyond.</strong> SunaEngine simulates in 2D
+    today, but the techniques used are dimension-agnostic, and the spec
+    documents them for reuse.</p>
+  <p><strong>SunaEngine isn't simply faster or prettier — it lets you build
+    things that would otherwise be impossible.</strong></p>
 </section>
 
 <section class="prose text" id="how">
-  <h2>How</h2>
+  <h2>How it works</h2>
+  <p>
+    You don't need to understand the implementation to use SunaEngine. But
+    if you're curious, here's what's happening underneath:
+  </p>
 
-  <h3>Fixed point, not floating point</h3>
+  <h3>1. Fixed point, not floating point</h3>
   <p>
     All simulation state is signed 32-bit fixed point — positions and
     velocities in Q16.16, where the integer 65&thinsp;536 is one world unit.
@@ -558,8 +572,14 @@
     cannot leak parity errors. The solver's WGSL contains no float scalars,
     vectors, or bitcasts; a gate greps for the tokens.
   </p>
+  <p class="plain"><span class="plainTag">In plain English</span>
+    Every particle position and velocity is stored as signed 32-bit
+    fixed-point values. The solver never performs floating-point arithmetic.
+    Multiplication, rounding, and overflow all follow deterministic rules,
+    ensuring the same calculation produces the same result on every machine.
+  </p>
 
-  <h3>Determinism on a parallel GPU</h3>
+  <h3>2. Parallel determinism</h3>
   <p>
     Bit-exact arithmetic is not enough — thousands of GPU threads finish in no
     particular order. So every accumulation in the solver is a per-term-clamped
@@ -569,8 +589,16 @@
     truncation. The engine runs a position-based fluid solve (density
     constraints, XSPH viscosity, surface tension) entirely under those rules.
   </p>
+  <p class="plain"><span class="plainTag">In plain English</span>
+    GPUs execute thousands of operations simultaneously, and normally that
+    means results depend on execution order. SunaEngine avoids that problem
+    by structuring every accumulation so that order doesn't matter; the only
+    order-sensitive operation, neighbor-list truncation, is canonicalized
+    before it happens. The result is deterministic behavior without giving
+    up GPU parallelism — and it works across architectures.
+  </p>
 
-  <h3>The digest</h3>
+  <h3>3. State hashes</h3>
   <p>
     The number under each panel is a 256-bit digest of every word of particle
     state: MurmurHash3 run as salted lanes over each particle, combined across
@@ -581,9 +609,18 @@
     per-substep hash chain (the same construction, folded every substep) is
     what the repo's gates compare across machines.
   </p>
+  <p class="plain"><span class="plainTag">In plain English</span>
+    Each simulation continuously computes a 256-bit digest of the complete
+    particle state. Two identical simulations always produce identical
+    hashes; if even one bit differs, the hash changes. Those hashes are used
+    throughout the engine to verify replays, detect regressions, and prove
+    simulation identity.
+  </p>
 
-  <h3>Quick start</h3>
-  <p>No build step, no dependencies. The engine is plain ES modules over WebGPU:</p>
+  <h3>Getting started</h3>
+  <p>No build step, no dependencies. The engine is plain ES modules over
+     WebGPU — just clone the repository, serve it locally, and open it in a
+     WebGPU-capable browser:</p>
 <pre><code>git clone https://github.com/DARIENBATHALTER/sunaengine.git
 cd sunaengine
 python3 -m http.server 8080
@@ -597,11 +634,28 @@ sim.step(240);
 console.log(await sim.digest());
 <span class="c">// → the same 64 hex characters on every machine</span></code></pre>
   <p>
+    Run this example on two separate machines; if everything is working
+    correctly, you'll see the same sixty-four hexadecimal hash string.
+  </p>
+  <p>
     The determinism claims on this page are enforced by the repo's own gates —
     <a href="test/extraction_gate.html">test/extraction_gate.html</a> runs the
     frozen dam-break scene and the record&rarr;replay byte-identity check in
     your browser, and <code>test/extraction_gate.md</code> documents the
     cross-repo proof that this engine is byte-for-byte the SunaBox engine.
+  </p>
+
+  <h2 id="why">Why I built this</h2>
+  <p>Frankly&hellip; I missed OE-CAKE.</p>
+  <p>
+    More than that, I wondered whether a physics simulation could become a
+    file format. Could anyone replay that splash years later and watch every
+    particle land in exactly the same place?
+  </p>
+  <p>
+    Those questions eventually became SunaEngine. SunaBox just happens to be
+    the first thing built with it — you can play it free in your browser at
+    <a href="https://sunabox.darienbathalter.com">sunabox.darienbathalter.com</a>.
   </p>
 
   <footer>
