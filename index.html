@@ -486,7 +486,7 @@
       No frames are stored.
     </p>
     <p>
-      When your cursor leaves the window, the pool replays your session from
+      When your cursor leaves the demo, the pool replays your session from
       the journal alone and compares the replay's final digest, byte for
       byte, against the run you actually performed. Then the scrubber
       appears: drag your splash smoothly backwards and forwards through time.
@@ -515,7 +515,7 @@
       <button class="hold" id="dropPool">Drop more — hold</button>
       <button class="quiet" id="replayNow" disabled>Replay now</button>
       <span class="hint">recording starts on first touch; replay starts when your cursor
-        leaves the window — or tap <em>replay now</em></span>
+        leaves the demo — or tap <em>replay now</em></span>
     </div>
   </div>
 </section>
@@ -872,7 +872,13 @@ async function bootPool() {
   cv.addEventListener('pointerdown', (e) => { e.preventDefault(); });
   cv.addEventListener('pointermove', (e) => { poolStir(e); });
   cv.addEventListener('pointerleave', () => { P.lastStir = null; });
-  // “the moment their mouse leaves the window”
+  // Replay starts the moment the cursor leaves the DEMO — the whole
+  // #poolHost (canvas + buttons + scrub), so reaching for “Drop more” never
+  // ends a session. The window-leave rule stays as a backstop; both funnel
+  // into finishRecording, which is mode-guarded and idempotent.
+  $('poolHost').addEventListener('pointerleave', () => {
+    if (P.mode === 'recording') finishRecording();
+  });
   document.addEventListener('mouseout', (e) => {
     if (!e.relatedTarget && (P.mode === 'recording')) finishRecording();
   });
@@ -909,7 +915,11 @@ function poolPointer(e) {
  *  cursor through the water is an interaction, so it arms the recording. */
 function poolStir(e) {
   if (P.mode === 'replay' || P.mode === 'finishing') return;
-  const p = pointerToWorld($('cvP'), e, 5, 48);
+  // Full-height mapping, same as the twins (2..70): the pool's water sits at
+  // the BOTTOM of the world (y ~58..70), and the old drop-placement clamp
+  // (yMax 48) kept the cursor pinned above the surface — you could skim the
+  // top but never push INTO the water. Drops keep their own clamp.
+  const p = pointerToWorld($('cvP'), e, 2, 70);
   if (P.lastStir) {
     const ix = clampI((p.x - P.lastStir.x) * STIR_GAIN, STIR_MAX);
     const iy = clampI((p.y - P.lastStir.y) * STIR_GAIN, STIR_MAX);
