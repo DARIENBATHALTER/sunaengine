@@ -340,6 +340,16 @@
   .plainTag { display: block; font: 600 0.72rem/1 var(--sans);
               letter-spacing: 0.14em; text-transform: uppercase;
               color: var(--accent); margin-bottom: 0.45rem; }
+  /* measured-performance table, journal voice: mono numbers, hairlines. */
+  .perf { width: 100%; border-collapse: collapse; margin-top: 0.9rem;
+          font: 400 0.86rem/1.5 var(--mono); }
+  .perf th { font: 600 0.7rem/1 var(--sans); letter-spacing: 0.12em;
+             text-transform: uppercase; color: var(--ink-2); text-align: left;
+             padding: 0.5rem 0.9rem 0.5rem 0; }
+  .perf td { border-top: 1px solid var(--hair); padding: 0.55rem 0.9rem 0.55rem 0;
+             color: var(--ink); white-space: nowrap; }
+  .perf td:first-child { color: var(--ink-2); }
+  @media (max-width: 640px) { .perf { display: block; overflow-x: auto; } }
 </style>
 <script>
   /* Error collector — installed before the module loads so import/boot errors
@@ -378,7 +388,7 @@
   <h1><span class="l1">Deterministic physics</span><br>
       <span class="l2">with bit-perfect replay.</span></h1>
   <p class="lead">
-    Not approximate. <em>Exact</em> — across any WebGPU-capable device.
+    Not approximate. <em>Exact.</em> Across any WebGPU-capable device.
   </p>
   <p class="lead">
     SunaEngine is an open-source particle physics engine that produces
@@ -480,8 +490,8 @@
       velocity, so no floating-point engine can take a splash backwards and
       land on the world it actually came from; the errors compound in
       reverse, too. A bit-exact engine has no such debt. The moment you
-      interact with this demonstration — stir it with your cursor, drop
-      water, hold the button — it starts recording a <code>.sunar</code>
+      interact with this demonstration. Stir it with your cursor, drop
+      water, hold the button. It starts recording a <code>.sunar</code>
       journal: the exact starting state plus your inputs, indexed by substep.
       No frames are stored.
     </p>
@@ -490,8 +500,8 @@
       the journal alone and compares the replay's final digest, byte for
       byte, against the run you actually performed. Then the scrubber
       appears: drag your splash smoothly backwards and forwards through time.
-      Reverse is replay-from-nearest-keyframe-forward — snapshots every 24
-      substeps make it feel continuous — and every landing is the exact
+      Reverse is replay-from-nearest-keyframe-forward. Snapshots every 24
+      substeps make it feel continuous and every landing is the exact
       state, not an approximation of it.
     </p>
   </div>
@@ -515,7 +525,7 @@
       <button class="hold" id="dropPool">Drop more — hold</button>
       <button class="quiet" id="replayNow" disabled>Replay now</button>
       <span class="hint">recording starts on first touch; replay starts when your cursor
-        leaves the demo — or tap <em>replay now</em></span>
+        leaves the demo (or tap <em>replay now</em>)</span>
     </div>
   </div>
 </section>
@@ -529,32 +539,32 @@
     For SunaEngine, determinism is not a benchmark number; it changes what
     software is possible to build.
   </p>
-  <p><strong>Low-latency multiplayer physics.</strong> Every machine
+  <p><strong>Low-latency multiplayer physics:<br></strong>Every machine
     computes the same world, so only player inputs need to be transmitted.
     There is no drifting state to reconcile, because every simulation
     follows the same path.</p>
-  <p><strong>Lightweight, shareable replays.</strong> A replay becomes an
+  <p><strong>Lightweight, shareable replays:<br></strong>Replay becomes an
     initial state and an input journal instead of thousands of stored
     frames. Anyone can regenerate the simulation and verify the final hash
-    independently — for challenges or leaderboards. Figure 2's
+    independently, for challenges or leaderboards. Figure 2's
     byte-identity check is this property, live.</p>
-  <p><strong>Smooth rewind.</strong> Chaos makes particle fluids
+  <p><strong>Smooth rewind:<br></strong>Chaos makes particle fluids
     irreversible in floating point; with exact state and an input journal,
-    rewinding doesn't just approximate the past — it actually recreates
+    rewinding doesn't just approximate the past, it actually recreates
     it.</p>
-  <p><strong>Reproducible research.</strong> A published scene with input
+  <p><strong>Reproducible research:<br></strong>A published scene with input
     journal and hash becomes a citable source, re-derived exactly on any
-    device. Anyone can reproduce exactly what the original author observed —
-    the difference between "our simulation showed" and "run it
+    device. Anyone can reproduce exactly what the original author observed.
+    The difference between "our simulation showed" and "run it
     yourself."</p>
-  <p><strong>World models.</strong> Deterministic simulations provide
+  <p><strong>World models:<br></strong>Deterministic simulations provide
     perfectly repeatable environments for AI experimentation and training.
     Large datasets can be regenerated from compact journals instead of
     being stored frame-by-frame.</p>
-  <p><strong>3D simulations and beyond.</strong> SunaEngine simulates in 2D
+  <p><strong>3D simulations and beyond:<br></strong>SunaEngine simulates in 2D
     today, but the techniques used are dimension-agnostic, and the spec
     documents them for reuse.</p>
-  <p><strong>SunaEngine isn't simply faster or prettier — it lets you build
+  <p><strong>SunaEngine isn't simply faster or prettier; it lets you build
     things that would otherwise be impossible.</strong></p>
 </section>
 
@@ -567,11 +577,11 @@
 
   <h3>1. Fixed point, not floating point</h3>
   <p>
-    All simulation state is signed 32-bit fixed point — positions and
+    All simulation state is signed 32-bit fixed point. Positions and
     velocities in Q16.16, where the integer 65&thinsp;536 is one world unit.
     Every multiply is an exact 32&times;32&rarr;64-bit product followed by an
     arithmetic shift with round-half-to-even; overflow saturates instead of
-    wrapping. RNE is symmetric — RNE(&minus;x)&nbsp;=&nbsp;&minus;RNE(x) — which is
+    wrapping. RNE is symmetric (RNE(&minus;x)&nbsp;=&nbsp;&minus;RNE(x)), which is
     what makes pair forces exactly antisymmetric, so momentum bookkeeping
     cannot leak parity errors. The solver's WGSL contains no float scalars,
     vectors, or bitcasts; a gate greps for the tokens.
@@ -585,11 +595,11 @@
 
   <h3>2. Parallel determinism</h3>
   <p>
-    Bit-exact arithmetic is not enough — thousands of GPU threads finish in no
+    Bit-exact arithmetic is not enough. Thousands of GPU threads finish in no
     particular order. So every accumulation in the solver is a per-term-clamped
     32-bit integer sum, which is commutative and associative: dispatch order
-    cannot change the result. The one genuinely order-sensitive step —
-    truncating a neighbor list that overflows its cap — is canonicalized before
+    cannot change the result. The one genuinely order-sensitive step
+    (truncating a neighbor list that overflows its cap) is canonicalized before
     truncation. The engine runs a position-based fluid solve (density
     constraints, XSPH viscosity, surface tension) entirely under those rules.
   </p>
@@ -599,14 +609,14 @@
     by structuring every accumulation so that order doesn't matter; the only
     order-sensitive operation, neighbor-list truncation, is canonicalized
     before it happens. The result is deterministic behavior without giving
-    up GPU parallelism — and it works across architectures.
+    up GPU parallelism, and it works across architectures.
   </p>
 
   <h3>3. State hashes</h3>
   <p>
     The number under each panel is a 256-bit digest of every word of particle
     state: MurmurHash3 run as salted lanes over each particle, combined across
-    particles by 32-bit addition — again commutative, so the GPU can hash in
+    particles by 32-bit addition, again commutative, so the GPU can hash in
     any order and still agree with the CPU reference. Half the lanes are
     permutation-invariant; the other half bind each particle to its storage
     slot, so a reordering and a physics divergence are distinguishable. A
@@ -621,9 +631,29 @@
     simulation identity.
   </p>
 
+  <h3>Measured performance</h3>
+  <p>
+    Determinism costs less than you'd guess. Measured on the shipped engine,
+    on real hardware, no tuning: "full shaders" is the complete water-surface
+    pipeline, "shaders off" is the flat points mode the demos on this page use.
+  </p>
+  <table class="perf">
+    <thead>
+      <tr><th></th><th>Full shaders</th><th>Shaders off</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>RTX 2070 Super</td>
+          <td>40,000 particles &middot; 80 fps</td>
+          <td>50,000 particles &middot; 120 fps</td></tr>
+      <tr><td>MacBook Pro (Apple silicon)</td>
+          <td>40,000 particles &middot; 60 fps</td>
+          <td>50,000 particles &middot; 100 fps</td></tr>
+    </tbody>
+  </table>
+
   <h3>Getting started</h3>
   <p>No build step, no dependencies. The engine is plain ES modules over
-     WebGPU — just clone the repository, serve it locally, and open it in a
+     WebGPU. Just clone the repository, serve it locally, and open it in a
      WebGPU-capable browser:</p>
 <pre><code>git clone https://github.com/DARIENBATHALTER/sunaengine.git
 cd sunaengine
@@ -642,7 +672,7 @@ console.log(await sim.digest());
     correctly, you'll see the same sixty-four hexadecimal hash string.
   </p>
   <p>
-    The determinism claims on this page are enforced by the repo's own gates —
+    The determinism claims on this page are enforced by the repo's own gates:
     <a href="test/extraction_gate.html">test/extraction_gate.html</a> runs the
     frozen dam-break scene and the record&rarr;replay byte-identity check in
     your browser, and <code>test/extraction_gate.md</code> documents the
@@ -658,7 +688,7 @@ console.log(await sim.digest());
   </p>
   <p>
     Those questions eventually became SunaEngine. SunaBox just happens to be
-    the first thing built with it — you can play it free in your browser at
+    the first thing built with it. You can play it free in your browser at
     <a href="https://sunabox.darienbathalter.com">sunabox.darienbathalter.com</a>.
   </p>
 
