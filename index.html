@@ -401,7 +401,7 @@
   <div class="env-note">
     <span>requires WebGPU (Chrome / Edge 113+)</span>
     <span>simulates on your GPU</span>
-    <span>max 3&thinsp;000 particles per sim</span>
+    <span>max 6&thinsp;000 particles per sim</span>
     <span>pauses off-screen</span>
   </div>
 </header>
@@ -748,10 +748,11 @@ const T = {
 
 /** The opening pour: a jet from the left wall, wholly precomputed, so both
  *  sims receive the schedule by construction rather than by synchronization.
- *  200 events x 8 particles over 400 substeps = 1600 particles. */
+ *  438 events x 8 particles over 876 substeps = 3504 particles (Darien:
+ *  start each sim with ~3500 poured). */
 function pourSchedule() {
   const evs = [];
-  for (let i = 0; i < 200; i++) {
+  for (let i = 0; i < 438; i++) {
     evs.push({
       substep: i * 2,
       particles: makeDroplet(wu(11), wu(22), 4, 2, wu(0.55), wu(-0.05)),
@@ -863,7 +864,7 @@ const P = {
 
 async function bootPool() {
   const cv = $('cvP');
-  P.demo = await bootWaterDemo({ scene: 'pool', poolW: 100, poolH: 12 });
+  P.demo = await bootWaterDemo({ scene: 'pool', poolW: 100, poolH: 35 });
   P.r = await makeRenderer(P.demo, cv);
   holdButton($('dropPool'), P, 'dropping');
 

@@ -29,10 +29,10 @@ import {
 } from './engine.js';
 import { encodeSunar, decodeSunar } from './sunar.js';
 
-/** Hard cap for every website demo sim (brief: max 3000 particles). The cap is
+/** Hard cap for every website demo sim (Darien 2026-08-01: 6000). The cap is
  *  structural: it is passed as the engine's maxParticles, and spawnFluid
  *  refuses (deterministically) to grow past it. */
-export const DEMO_PARTICLE_CAP = 3000;
+export const DEMO_PARTICLE_CAP = 6000;
 export const DEMO_SUBMIT_BATCH = 25;
 
 const int = (x, label) => {

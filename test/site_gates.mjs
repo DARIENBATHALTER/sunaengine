@@ -21,7 +21,7 @@
 // The gates (from the demo brief):
 //   g1 TWINS-EQUAL          hashes equal AND changing over ~600 substeps
 //   g2 TWINS-UNDER-INPUT    real Drop-More press; equal after settle; n grew;
-//                           n NEVER exceeds 3000 (cap driven to refusal)
+//                           n NEVER exceeds the cap (driven to refusal)
 //   g3 DIVERGENCE CONTROL   one extra particle in sim B only -> DOM must show
 //                           divergence within 60 substeps (display is live)
 //   g4 REPLAY-BYTE-IDENTITY pointer interaction -> synthetic mouseleave ->
@@ -60,7 +60,10 @@ const FROZEN = {
   },
 };
 
-const CAP = 3000;
+// Must equal src/demo_boot.js's DEMO_PARTICLE_CAP (raised to 6000 2026-08-01;
+// the gates run in node and the demo module needs a browser, so the number is
+// pinned here and the mismatch shows up as exactly the red this comment sits on).
+const CAP = 6000;
 const HEX64 = /^[0-9a-f]{64}$/;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
