@@ -808,8 +808,10 @@ async function bootPool() {
   P.r = await makeRenderer(P.demo, cv);
   holdButton($('dropPool'), P, 'dropping');
 
-  cv.addEventListener('pointerdown', (e) => { e.preventDefault(); poolPointer(e); });
-  cv.addEventListener('pointermove', (e) => { poolStir(e); if (e.buttons) poolPointer(e); });
+  // Darien 2026-08-01: the pool's mouse is for STIRRING ONLY — same gesture
+  // grammar as the twins. Drops come from the button below, nothing else.
+  cv.addEventListener('pointerdown', (e) => { e.preventDefault(); });
+  cv.addEventListener('pointermove', (e) => { poolStir(e); });
   cv.addEventListener('pointerleave', () => { P.lastStir = null; });
   // “the moment their mouse leaves the window”
   document.addEventListener('mouseout', (e) => {
