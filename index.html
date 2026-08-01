@@ -334,6 +334,9 @@
   .fineprint { margin-top: 0.8rem; }
   /* §"In plain English" — the technical paragraph stays; this restates it for
      the reader who skipped it. Darien 2026-08-01. */
+  /* the bullet titles in Uses wear the accent; the closing line stays ink. */
+  #uses p > strong { color: var(--accent); }
+  #uses p:last-of-type > strong { color: var(--ink); }
   .plain { background: var(--panel); border-left: 2px solid var(--accent);
            border-radius: 0 4px 4px 0; padding: 0.85rem 1rem; margin-top: 0.9rem;
            color: var(--ink-2); }
