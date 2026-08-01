@@ -125,8 +125,12 @@
     letter-spacing: 0.22em;
     text-transform: uppercase;
     color: var(--accent);
+    /* Darien 2026-08-01: a good bit of air above every blue header — the
+       sections should land as separate rooms, not one scroll. */
+    margin-top: 4.5rem;
     margin-bottom: 0.9rem;
   }
+  header h2, .figure h2:first-child { margin-top: 0; }
   h2 .figno { color: var(--ink); }
   .figintro { max-width: 42rem; margin-bottom: 1.6rem; }
   .figintro p + p { margin-top: 0.7rem; }
