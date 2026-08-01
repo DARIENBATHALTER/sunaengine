@@ -51,10 +51,11 @@
     -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
     border-bottom: 1px solid var(--hair);
   }
-  .navBrand { display: flex; align-items: center; gap: 0.55rem;
-              font: 700 0.95rem/1 var(--sans); color: var(--ink);
+  /* Shared standard with sunabox.dev (2026-08-01): 34px mark, 1.08rem title. */
+  .navBrand { display: flex; align-items: center; gap: 0.6rem;
+              font: 700 1.08rem/1 var(--sans); color: var(--ink);
               letter-spacing: 0.01em; text-decoration: none; }
-  .navBrand img { width: 26px; height: 26px; }
+  .navBrand img { width: 34px; height: 34px; }
   .navBrand b { color: var(--accent); font-weight: 700; }
   .navLinks { display: flex; align-items: center; gap: 1.3rem; }
   .navLinks a, .navBrand { border-bottom: none; }
@@ -67,7 +68,8 @@
   section, [id] { scroll-margin-top: 64px; }
   @media (max-width: 640px) { .navLinks a:not(.gh) { display: none; } }
 
-  header.prose { padding: 7.2rem 1.25rem 0; }
+  /* 6.4rem top: the shared hero offset with sunabox.dev. */
+  header.prose { padding: 6.4rem 1.25rem 0; }
   /* The hero: the liquid recording breathes behind the opening prose, then
      dissolves into the page's own ground before the text gets dense. */
   .hero { position: relative; overflow: hidden; }
@@ -83,8 +85,10 @@
   }
   .hero header { position: relative; z-index: 2; text-align: center; }
   .hero header.prose { max-width: 52rem; }
-  .heroMark { width: 96px; height: 96px; display: block; margin: 0 auto;
-              filter: drop-shadow(0 0 26px rgba(74, 179, 242, 0.5)); }
+  /* 140px, centred, glow + dark seat — the shared standard with sunabox.dev. */
+  .heroMark { width: 140px; height: auto; display: block; margin: 0 auto;
+              filter: drop-shadow(0 0 30px rgba(74, 179, 242, 0.5))
+                      drop-shadow(0 3px 14px rgba(0, 0, 0, 0.65)); }
   .hero .lead { margin-left: auto; margin-right: auto; }
   .chips { display: flex; flex-wrap: wrap; justify-content: center;
            gap: 0.55rem; margin-top: 1.6rem; }
