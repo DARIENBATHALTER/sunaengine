@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
 # The extraction gate — cross-repo determinism proof
 
 Copyright (C) 2026 Darien Bathalter — AGPL-3.0-only, see LICENSE.

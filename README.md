@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
 # SunaEngine
 
 **Bit-exact particle physics.** The real [SunaBox](https://github.com/DARIENBATHALTER/sunabox) engine — its deterministic, water-capable core — extracted unmodified and published under the AGPL.
