@@ -1,0 +1,403 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+<!--
+  SunaEngine — the floating-point comparison exhibit.
+
+  This page contains a DELIBERATELY ORDINARY float32 PBF solver, written the
+  way everyone writes them. It is NOT the engine (see ./src for that): it is
+  the control group. Two copies run the same scene and the same inputs; the
+  only difference is the ORDER their neighbour sums accumulate in — ascending
+  for A, descending for B — which is exactly the difference two GPUs, two
+  drivers, or two compiler versions would introduce. Float addition is not
+  associative, so they drift. Integer addition is, so the twins on the front
+  page cannot.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SunaEngine — what floating point cannot do</title>
+<link rel="icon" href="assets/logo.png">
+<style>
+  :root {
+    color-scheme: dark;
+    --paper:  #0a0e16; --panel: #111726; --ink: #eae7de; --ink-2: #a29d90;
+    --hair: #242c3d; --accent: #4ab3f2; --bad: #e0554b;
+    --serif: Charter, 'Iowan Old Style', Georgia, serif;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    --mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--paper); color: var(--ink);
+         font: 400 1.02rem/1.65 var(--sans); padding: 4.6rem 0 6rem; }
+  .prose { max-width: 42rem; margin: 0 auto; padding: 0 1.25rem; }
+  .figure { max-width: 68rem; margin: 0 auto; padding: 0 1.25rem; }
+  nav.top { position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 1.25rem; height: 52px; background: rgba(10,14,22,0.74);
+    -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--hair); }
+  .navBrand { display: flex; align-items: center; gap: 0.6rem;
+    font: 700 1.08rem/1 var(--sans); color: var(--ink); text-decoration: none; }
+  .navBrand img { width: 34px; height: 34px; }
+  .navBrand b { color: var(--accent); }
+  nav.top a.back { font: 500 0.84rem/1 var(--sans); color: var(--ink-2);
+    text-decoration: none; }
+  nav.top a.back:hover { color: var(--ink); }
+  h1 { font: 700 clamp(1.6rem, 4vw, 2.4rem)/1.2 var(--sans); margin: 2.2rem 0 1rem;
+       text-align: center; }
+  h1 b { color: var(--bad); }
+  h2 { font: 700 1.35rem/1.3 var(--sans); letter-spacing: 0.22em;
+       text-transform: uppercase; color: var(--accent); margin: 4.5rem 0 0.9rem; }
+  p { margin: 0 0 0.9rem; }
+  .lead { font-size: 1.13rem; text-align: center; color: var(--ink); }
+  .panes { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 1.6rem 0 0.8rem; }
+  .pane { position: relative; border: 1px solid var(--hair); border-radius: 2px;
+          overflow: hidden; background: #05070d; }
+  .pane canvas { display: block; width: 100%; aspect-ratio: 16 / 9; }
+  .pane .tag { position: absolute; top: 8px; left: 10px; z-index: 2;
+    font: 600 0.7rem/1 var(--mono); letter-spacing: 0.1em; color: var(--ink-2); }
+  .verdictRow { display: flex; align-items: baseline; justify-content: center;
+    gap: 1.2rem; flex-wrap: wrap; margin: 0.6rem 0 0.4rem;
+    font: 500 0.9rem/1.6 var(--mono); }
+  .verdictRow b { color: var(--bad); font-size: 1.5rem; }
+  .verdictRow .ok { color: var(--accent); }
+  .small { font-size: 0.86rem; color: var(--ink-2); }
+  .simboot { position: absolute; inset: 0; z-index: 3; display: flex;
+    flex-direction: column; align-items: center; justify-content: center;
+    gap: 0.7rem; background: #05070d; font: 500 0.78rem/1 var(--mono);
+    color: var(--ink-2); letter-spacing: 0.08em; transition: opacity 0.4s ease; }
+  .simboot.off { opacity: 0; pointer-events: none; }
+  .pulse { display: flex; gap: 7px; }
+  .pulse i { width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
+    opacity: 0.25; animation: bp 1.1s ease-in-out infinite; }
+  .pulse i:nth-child(2) { animation-delay: 0.18s; }
+  .pulse i:nth-child(3) { animation-delay: 0.36s; }
+  .pulse i:nth-child(4) { animation-delay: 0.54s; }
+  @keyframes bp { 0%,100% { opacity: 0.25; transform: scale(1); }
+                  35% { opacity: 1; transform: scale(1.35); } }
+  .rule { border: 0; border-top: 1px solid var(--hair); margin: 3rem auto; max-width: 42rem; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<nav class="top">
+  <a class="navBrand" href="./"><img src="assets/logo.png" alt="">
+    <span><b>Suna</b>Engine</span></a>
+  <a class="back" href="./">&larr; back to the engine</a>
+</nav>
+
+<div class="prose">
+  <h1>The same physics, <b>summed in a different order</b></h1>
+  <p class="lead">
+    This page is the control group: an ordinary <em>floating-point</em> particle
+    solver, written the way everyone writes them.
+  </p>
+  <p>
+    Below are two copies of it. Same scene, same pour, same inputs, same code.
+    One difference only: pane A adds its neighbour forces in ascending order,
+    pane B in descending order. That is not a bug we planted &mdash; it is
+    exactly the difference two GPUs, two drivers, or two compiler versions
+    introduce on their own. Floating-point addition is not associative:
+    (a&nbsp;+&nbsp;b)&nbsp;+&nbsp;c and a&nbsp;+&nbsp;(b&nbsp;+&nbsp;c) round
+    differently.
+  </p>
+  <p>
+    So watch the number between them. It starts at zero. It never goes back.
+  </p>
+</div>
+
+<div class="figure">
+  <div class="panes">
+    <div class="pane"><span class="tag">FLOAT &middot; sums ascending</span>
+      <canvas id="cvA"></canvas>
+      <div class="simboot" id="bootA"><div class="pulse"><i></i><i></i><i></i><i></i></div>compiling the control group</div>
+    </div>
+    <div class="pane"><span class="tag">FLOAT &middot; sums descending</span>
+      <canvas id="cvB"></canvas>
+      <div class="simboot" id="bootB"><div class="pulse"><i></i><i></i><i></i><i></i></div>same code, other order</div>
+    </div>
+  </div>
+  <div class="verdictRow">
+    <span>largest disagreement:</span>
+    <b id="divN">0.000</b>
+    <span>world units</span>
+    <span class="small" id="divNote">(the panes are byte-identical until the first sum disagrees)</span>
+  </div>
+  <div class="verdictRow small">
+    <span class="ok">the integer twins on the front page have shown 0.000 forever &mdash; and can prove it with a hash</span>
+  </div>
+</div>
+
+<div class="prose">
+  <h2>Why this kills rewind</h2>
+  <p>
+    The front page's second demo scrubs a splash backwards and forwards
+    through time. It can do that because a recorded session is just a starting
+    state plus inputs, and replaying them lands on <em>the same bits</em> —
+    verified, every time, by a 256-bit digest.
+  </p>
+  <p>
+    The drift above is why floating point cannot have that. A float replay is
+    a new run, and a new run only agrees if every one of billions of additions
+    re-rounds identically &mdash; on every machine, every driver, forever.
+    OE-CAKE, the 2007 toy this engine honours, kept snapshots for undo:
+    <em>memories</em> of states. It could never recompute the past, because in
+    floating point the past does not recompute.
+  </p>
+  <p>
+    Determinism is not a benchmark number. It is the difference between a
+    simulation you watched and a simulation you can <em>prove</em>.
+  </p>
+  <p><a href="./">&larr; back to the twins that agree</a></p>
+</div>
+
+<script type="module">
+// ============================================================================
+// A deliberately ordinary float32 PBF. ~250 lines, O(n²) neighbours — naive
+// on purpose: the summation loop's direction is the entire experiment.
+// ============================================================================
+const W = 128, H = 72;                  // world, in wu
+const CAP = 2200;
+const SUB = 2;                          // substeps per frame
+const GRAV = 0.010;                     // wu / substep^2
+const REST = 4.0;                       // measured for the unnormalised poly6 at unit packing
+const HR = 2.2;                         // kernel radius, wu
+const EPS = 300.0;                      // CFM relaxation
+const ITERS = 3;
+
+const SIM_WGSL = /* wgsl */`
+struct U { n : u32, dir : u32, pad0 : u32, pad1 : u32 };
+@group(0) @binding(0) var<uniform> u : U;
+@group(0) @binding(1) var<storage, read_write> pos : array<vec2<f32>>;
+@group(0) @binding(2) var<storage, read_write> vel : array<vec2<f32>>;
+@group(0) @binding(3) var<storage, read_write> prd : array<vec2<f32>>;
+@group(0) @binding(4) var<storage, read_write> lam : array<f32>;
+
+const W : f32 = ${W}.0;
+const H : f32 = ${H}.0;
+const HR : f32 = 1.6;      // contact radius, wu
+const K : f32 = 0.045;     // contact spring
+const DAMP : f32 = 0.985;
+const G : f32 = ${GRAV};
+
+// Pass 1 — forces. THE EXPERIMENT LIVES IN THIS LOOP: identical spring terms,
+// summed ascending (pane A) or descending (pane B). Float addition is not
+// associative, so the two panes round differently from the very first frame.
+@compute @workgroup_size(64)
+fn forces(@builtin(global_invocation_id) g : vec3<u32>) {
+  let i = g.x; if (i >= u.n) { return; }
+  let pi = pos[i];
+  var fx = 0.0; var fy = 0.0;
+  for (var k : u32 = 0u; k < u.n; k = k + 1u) {
+    var j = k;
+    if (u.dir == 1u) { j = u.n - 1u - k; }
+    if (j == i) { continue; }
+    let d = pi - pos[j];
+    let r = length(d);
+    if (r < HR && r > 1e-5) {
+      let push = K * (1.0 - r / HR);
+      fx = fx + push * d.x / r;
+      fy = fy + push * d.y / r;
+    }
+  }
+  prd[i] = vec2<f32>(fx, fy);
+}
+
+// Pass 2 — integrate, walls, done.
+@compute @workgroup_size(64)
+fn integrate(@builtin(global_invocation_id) g : vec3<u32>) {
+  let i = g.x; if (i >= u.n) { return; }
+  var v = (vel[i] + prd[i]) * DAMP;
+  v.y = v.y + G;
+  var p = pos[i] + v;
+  if (p.x < 1.0)     { p.x = 1.0;     v.x = abs(v.x) * 0.3; }
+  if (p.x > W - 1.0) { p.x = W - 1.0; v.x = -abs(v.x) * 0.3; }
+  if (p.y < 1.0)     { p.y = 1.0;     v.y = abs(v.y) * 0.3; }
+  if (p.y > H - 1.0) { p.y = H - 1.0; v.y = -abs(v.y) * 0.3; }
+  vel[i] = v;
+  pos[i] = p;
+}
+`;
+
+const DRAW_WGSL = /* wgsl */`
+struct U { n : u32, dir : u32, pad0 : u32, pad1 : u32 };
+@group(0) @binding(0) var<uniform> u : U;
+@group(0) @binding(1) var<storage, read> pos : array<vec2<f32>>;
+struct VO { @builtin(position) clip : vec4<f32>, @location(0) uv : vec2<f32> };
+@vertex fn vs(@builtin(vertex_index) vi : u32, @builtin(instance_index) ii : u32) -> VO {
+  var c = array<vec2<f32>, 6>(
+    vec2<f32>(-1.0,-1.0), vec2<f32>(1.0,-1.0), vec2<f32>(-1.0,1.0),
+    vec2<f32>(-1.0, 1.0), vec2<f32>(1.0,-1.0), vec2<f32>( 1.0,1.0));
+  var o : VO;
+  if (ii >= u.n) { o.clip = vec4<f32>(0.0,0.0,2.0,1.0); return o; }
+  let p = pos[ii];
+  let base = vec2<f32>(p.x / ${W}.0 * 2.0 - 1.0, 1.0 - p.y / ${H}.0 * 2.0);
+  o.clip = vec4<f32>(base + c[vi] * vec2<f32>(0.010, 0.0178), 0.0, 1.0);
+  o.uv = c[vi];
+  return o;
+}
+@fragment fn fs(v : VO) -> @location(0) vec4<f32> {
+  let d = length(v.uv);
+  if (d > 1.0) { discard; }
+  let a = smoothstep(1.0, 0.55, d);
+  return vec4<f32>(0.24 * a, 0.55 * a, 0.86 * a, a);
+}
+`;
+
+const $ = (id) => document.getElementById(id);
+let A, B, n = 0, frame = 0, device;
+
+async function makePane(canvas, dir) {
+  const ctx = canvas.getContext('webgpu');
+  const format = navigator.gpu.getPreferredCanvasFormat();
+  ctx.configure({ device, format, alphaMode: 'opaque' });
+  const B4 = CAP * 8;
+  const bufs = {
+    pos: device.createBuffer({ size: B4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC }),
+    vel: device.createBuffer({ size: B4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST }),
+    prd: device.createBuffer({ size: B4, usage: GPUBufferUsage.STORAGE }),
+    lam: device.createBuffer({ size: CAP * 4, usage: GPUBufferUsage.STORAGE }),
+    uni: device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }),
+    read: device.createBuffer({ size: B4, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ }),
+  };
+  const sim = device.createShaderModule({ code: SIM_WGSL });
+  const draw = device.createShaderModule({ code: DRAW_WGSL });
+  // One EXPLICIT layout with every binding: 'auto' strips the bindings an
+  // entrypoint doesn't touch, and then one shared bind group cannot serve
+  // all four passes.
+  const bgl = device.createBindGroupLayout({ entries: [
+    { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+    { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+    { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+    { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+    { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+  ]});
+  const pl = device.createPipelineLayout({ bindGroupLayouts: [bgl] });
+  const pipes = {};
+  for (const e of ['forces', 'integrate']) {
+    pipes[e] = device.createComputePipeline({ layout: pl, compute: { module: sim, entryPoint: e } });
+  }
+  const drawPipe = device.createRenderPipeline({
+    layout: 'auto',
+    vertex: { module: draw, entryPoint: 'vs' },
+    fragment: { module: draw, entryPoint: 'fs', targets: [{ format, blend: {
+      color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha' },
+      alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } } }] },
+    primitive: { topology: 'triangle-list' },
+  });
+  const oneGroup = device.createBindGroup({ layout: bgl, entries: [
+    { binding: 0, resource: { buffer: bufs.uni } },
+    { binding: 1, resource: { buffer: bufs.pos } },
+    { binding: 2, resource: { buffer: bufs.vel } },
+    { binding: 3, resource: { buffer: bufs.prd } },
+    { binding: 4, resource: { buffer: bufs.lam } },
+  ]});
+  const groups = {};
+  for (const e of Object.keys(pipes)) groups[e] = oneGroup;
+  const drawGroup = device.createBindGroup({ layout: drawPipe.getBindGroupLayout(0), entries: [
+    { binding: 0, resource: { buffer: bufs.uni } },
+    { binding: 1, resource: { buffer: bufs.pos } },
+  ]});
+  return { ctx, bufs, pipes, groups, drawPipe, drawGroup, dir };
+}
+
+function pour(pane, list) {
+  const f = new Float32Array(list.length * 2);
+  list.forEach((p, i) => { f[i * 2] = p[0]; f[i * 2 + 1] = p[1]; });
+  device.queue.writeBuffer(pane.bufs.pos, n * 8, f);
+  device.queue.writeBuffer(pane.bufs.vel, n * 8, new Float32Array(list.length * 2).fill(0));
+}
+
+// The shared pour: a deterministic JS schedule, identical for both panes.
+function pourStep() {
+  if (n >= CAP - 8 || frame > 560 || frame % 2 !== 0) return;
+  const list = [];
+  for (let k = 0; k < 8; k++) {
+    const jx = ((frame * 37 + k * 101) % 89) / 89 - 0.5;
+    const jy = ((frame * 53 + k * 71) % 97) / 97 - 0.5;
+    list.push([10 + (k % 4) + jx * 0.4, 18 + ((k / 4) | 0) + jy * 0.4]);
+  }
+  pour(A, list); pour(B, list);
+  n += list.length;
+}
+
+function step(pane) {
+  device.queue.writeBuffer(pane.bufs.uni, 0, new Uint32Array([n, pane.dir, 0, 0]));
+  const enc = device.createCommandEncoder();
+  for (let s = 0; s < SUB; s++) {
+    const wg = Math.ceil(n / 64);
+    let p = enc.beginComputePass();
+    p.setPipeline(pane.pipes.forces); p.setBindGroup(0, pane.groups.forces); p.dispatchWorkgroups(wg);
+    p.end();
+    p = enc.beginComputePass();
+    p.setPipeline(pane.pipes.integrate); p.setBindGroup(0, pane.groups.integrate); p.dispatchWorkgroups(wg);
+    p.end();
+  }
+  const view = pane.ctx.getCurrentTexture().createView();
+  const rp = enc.beginRenderPass({ colorAttachments: [{ view, loadOp: 'clear',
+    clearValue: { r: 0.02, g: 0.027, b: 0.05, a: 1 }, storeOp: 'store' }] });
+  rp.setPipeline(pane.drawPipe); rp.setBindGroup(0, pane.drawGroup);
+  rp.draw(6, n);
+  rp.end();
+  device.queue.submit([enc.finish()]);
+}
+
+let divBusy = false, maxDiv = 0;
+async function measure() {
+  if (divBusy || n === 0) return;
+  divBusy = true;
+  try {
+    const enc = device.createCommandEncoder();
+    enc.copyBufferToBuffer(A.bufs.pos, 0, A.bufs.read, 0, n * 8);
+    enc.copyBufferToBuffer(B.bufs.pos, 0, B.bufs.read, 0, n * 8);
+    device.queue.submit([enc.finish()]);
+    await A.bufs.read.mapAsync(GPUMapMode.READ, 0, n * 8);
+    const a = new Float32Array(A.bufs.read.getMappedRange(0, n * 8).slice(0));
+    A.bufs.read.unmap();
+    await B.bufs.read.mapAsync(GPUMapMode.READ, 0, n * 8);
+    const b = new Float32Array(B.bufs.read.getMappedRange(0, n * 8).slice(0));
+    B.bufs.read.unmap();
+    let m = 0;
+    for (let i = 0; i < n * 2; i += 2) {
+      const dx = a[i] - b[i], dy = a[i + 1] - b[i + 1];
+      const d = Math.sqrt(dx * dx + dy * dy);
+      if (d > m) m = d;
+    }
+    maxDiv = Math.max(maxDiv, m);
+    $('divN').textContent = maxDiv.toFixed(3);
+    if (maxDiv > 0.001) {
+      $('divNote').textContent = `(after ${frame} frames — and it will never return to zero)`;
+    }
+    window.__FLOAT_DIV__ = maxDiv;   // the site gate reads this
+  } finally { divBusy = false; }
+}
+
+async function boot() {
+  const adapter = await navigator.gpu?.requestAdapter();
+  if (!adapter) {
+    $('bootA').textContent = 'WebGPU is unavailable in this browser';
+    $('bootB').textContent = 'WebGPU is unavailable in this browser';
+    return;
+  }
+  device = await adapter.requestDevice();
+  A = await makePane($('cvA'), 0);
+  B = await makePane($('cvB'), 1);
+  $('bootA').classList.add('off');
+  $('bootB').classList.add('off');
+  const loop = () => {
+    requestAnimationFrame(loop);
+    if (document.hidden) return;
+    frame++;
+    pourStep();
+    if (n > 0) { step(A); step(B); }
+    if (frame % 30 === 0) measure();
+  };
+  loop();
+  window.__READY__ = true;    // the site gates and the drive harness read this
+}
+boot();
+</script>
+</body>
+</html>

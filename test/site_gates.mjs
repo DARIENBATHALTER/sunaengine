@@ -555,7 +555,7 @@ function g6browser(cdp, port) {
 // main
 // ---------------------------------------------------------------------------
 const argv = process.argv.slice(2);
-const selected = argv.length ? argv : ['g1', 'g3', 'g2', 'g4', 'g6', 'g5'];
+const selected = argv.length ? argv : ['g1', 'g3', 'g2', 'g4', 'g7', 'g6', 'g5'];
 
 async function runGate(name, fn) {
   say(`\n== ${name} ==`);
@@ -570,7 +570,7 @@ async function runGate(name, fn) {
   }
 }
 
-const uiGates = selected.filter((g) => ['g1', 'g2', 'g3', 'g4', 'g6'].includes(g));
+const uiGates = selected.filter((g) => ['g1', 'g2', 'g3', 'g4', 'g6', 'g7'].includes(g));
 const wantsWindowErrors = [];
 
 if (uiGates.length) {
@@ -594,6 +594,21 @@ if (uiGates.length) {
   if (selected.includes('g2')) { await runGate('g2 TWINS-UNDER-INPUT', () => g2(cdp, base)); await grabWindowErrors(); }
   // load 3: g4
   if (selected.includes('g4')) { await runGate('g4 REPLAY-BYTE-IDENTITY', () => g4(cdp, base)); await grabWindowErrors(); }
+  // load 4: g7 — the float exhibit is the DIVERGENCE-POSITIVE control: the
+  // page whose whole job is to drift MUST drift, or the front page's zeros
+  // are comparing nothing.
+  if (selected.includes('g7')) {
+    await runGate('g7 FLOAT-EXHIBIT-DIVERGES', async () => {
+      // plain navigation: navTo() waits for index.html's __GATE__, which the
+      // float exhibit deliberately does not have.
+      await cdp.send('Page.navigate', { url: base + '/float.html' });
+      await cdp.until('float panes booted', `window.__READY__ === true`, 60000, 500);
+      await cdp.until('float twins diverged past 0.05 wu', `(window.__FLOAT_DIV__ || 0) > 0.05`, 120000, 500);
+      const div = await cdp.ev('window.__FLOAT_DIV__');
+      A(div > 0.05, `same code, opposite sum order: drifted ${div.toFixed(3)} wu (and can never return)`);
+    });
+    await grabWindowErrors();
+  }
   if (selected.includes('g6')) {
     await runGate('g6 HYGIENE', async () => {
       A(wantsWindowErrors.length === 0, `window.__ERRORS__ empty on every load (${wantsWindowErrors.length ? wantsWindowErrors.join('; ') : '0 entries'})`);
