@@ -152,7 +152,35 @@
      there and read as "stuck". The frame crops it out of view: the canvas is
      scaled up inside an overflow-hidden box, which costs the GPU nothing and
      keeps the pointer map exact (the rect scales with the pixels). */
+  /* §boot — the demos take a beat to compile pipelines and pour their scene;
+     an empty black pane reads as broken. One overlay per frame, journal
+     voice, removed the moment the sim is live. */
+  .simboot {
+    position: absolute; inset: 0; z-index: 3;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 0.7rem; background: #05070d;
+    font: 500 0.78rem/1 var(--mono); color: var(--ink-2);
+    letter-spacing: 0.08em; transition: opacity 0.4s ease;
+  }
+  .simboot.off { opacity: 0; pointer-events: none; }
+  .simboot .pulse {
+    display: flex; gap: 7px;
+  }
+  .simboot .pulse i {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--accent); opacity: 0.25;
+    animation: bootpulse 1.1s ease-in-out infinite;
+  }
+  .simboot .pulse i:nth-child(2) { animation-delay: 0.18s; }
+  .simboot .pulse i:nth-child(3) { animation-delay: 0.36s; }
+  .simboot .pulse i:nth-child(4) { animation-delay: 0.54s; }
+  .simboot .pulse i:nth-child(5) { animation-delay: 0.72s; }
+  @keyframes bootpulse {
+    0%, 100% { opacity: 0.25; transform: scale(1); }
+    35% { opacity: 1; transform: scale(1.35); }
+  }
   .simframe {
+    position: relative;   /* the boot overlay anchors to the frame */
     overflow: hidden;
     border: 1px solid var(--hair);
     border-radius: 2px;
@@ -467,12 +495,14 @@
   <div id="twinsHost">
     <div class="twins">
       <div class="panel">
-        <div class="simframe"><canvas id="cvA"></canvas></div>
+        <div class="simframe"><canvas id="cvA"></canvas>
+          <div class="simboot" id="bootA"><div class="pulse"><i></i><i></i><i></i><i></i><i></i></div>compiling the solver on your GPU</div></div>
         <div class="panel-label"><span>sim A</span><span class="np" id="npA">—</span></div>
         <div class="hash" id="hashA">—</div>
       </div>
       <div class="panel">
-        <div class="simframe"><canvas id="cvB"></canvas></div>
+        <div class="simframe"><canvas id="cvB"></canvas>
+          <div class="simboot" id="bootB"><div class="pulse"><i></i><i></i><i></i><i></i><i></i></div>computing the same thing</div></div>
         <div class="panel-label"><span>sim B</span><span class="np" id="npB">—</span></div>
         <div class="hash" id="hashB">—</div>
       </div>
@@ -514,7 +544,8 @@
   </div>
 
   <div class="pool" id="poolHost">
-    <div class="simframe"><canvas id="cvP"></canvas></div>
+    <div class="simframe"><canvas id="cvP"></canvas>
+      <div class="simboot" id="bootP"><div class="pulse"><i></i><i></i><i></i><i></i><i></i></div>compiling the solver on your GPU</div></div>
     <div class="status-line">
       <span class="mode" id="poolMode">live</span>
       <span class="np" id="npP">—</span>
@@ -810,6 +841,7 @@ async function bootTwins() {
   holdButton($('dropTwins'), T, 'dropping');
   hoverStir($('cvA')); hoverStir($('cvB'));
   T.ready = true;
+  for (const id of ['bootA', 'bootB']) $(id)?.classList.add('off');
 }
 
 /** Cursor-motion stirring, no click needed. Motion between two pointer samples
@@ -928,6 +960,7 @@ async function bootPool() {
     if (P.mode === 'scrub') scrubTo(Number(e.target.value));
   });
   P.ready = true;
+  $('bootP')?.classList.add('off');
   setPoolMode('live');
 }
 
