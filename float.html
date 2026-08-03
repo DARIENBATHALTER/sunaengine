@@ -222,6 +222,9 @@ fn integrate(@builtin(global_invocation_id) g : vec3<u32>) {
   let i = g.x; if (i >= u.n) { return; }
   var v = (vel[i] + prd[i]) * DAMP;
   v.y = v.y + G;
+  // terminal velocity (air drag): the pour lands softly and stacks in layers
+  // instead of splashing back up into the falling curtain
+  v.y = min(v.y, 0.30);
   {
     let th = f32(u.pad0) * PADO * 2.0;
     let c = vec2<f32>(W * 0.5, H - 11.0);
@@ -264,10 +267,9 @@ const PADPTS : u32 = 80u;
   // of pouring). Colour is a pure function of the SPAWN INDEX, identical
   // in both panes — so when the stripes end up in different places, that is
   // the mixing itself disagreeing.
-  var dye = array<vec3<f32>, 6>(
+  var dye = array<vec3<f32>, 3>(
     vec3<f32>(0.24, 0.55, 0.86), vec3<f32>(0.92, 0.42, 0.55),
-    vec3<f32>(0.36, 0.78, 0.48), vec3<f32>(0.93, 0.78, 0.30),
-    vec3<f32>(0.62, 0.48, 0.92), vec3<f32>(0.35, 0.80, 0.83));
+    vec3<f32>(0.93, 0.78, 0.30));
   var p : vec2<f32>;
   var sz = vec2<f32>(0.010, 0.0178);
   if (ii >= u.n) {
@@ -280,7 +282,7 @@ const PADPTS : u32 = 80u;
     sz = vec2<f32>(0.008, 0.0142);
   } else {
     p = pos[ii];
-    o.col = dye[(ii / 240u) % 6u];
+    o.col = dye[(ii / 240u) % 3u];
   }
   let base = vec2<f32>(p.x / ${W}.0 * 2.0 - 1.0, 1.0 - p.y / ${H}.0 * 2.0);
   o.clip = vec4<f32>(base + c[vi] * sz, 0.0, 1.0);
@@ -357,17 +359,23 @@ function pour(pane, list) {
   const f = new Float32Array(list.length * 2);
   list.forEach((p, i) => { f[i * 2] = p[0]; f[i * 2 + 1] = p[1]; });
   device.queue.writeBuffer(pane.bufs.pos, n * 8, f);
-  device.queue.writeBuffer(pane.bufs.vel, n * 8, new Float32Array(list.length * 2).fill(0));
+  // spawn already falling at terminal speed — resting spawns crowd the
+  // emitter and spray sideways into a cone
+  const v0 = new Float32Array(list.length * 2);
+  for (let i = 0; i < list.length; i++) v0[i * 2 + 1] = 0.30;
+  device.queue.writeBuffer(pane.bufs.vel, n * 8, v0);
 }
 
 // The shared pour: a deterministic JS schedule, identical for both panes.
 function pourStep() {
+  // A curtain from the TOP: eight columns raining straight down, so the dye
+  // bands arrive as clean LAYERS, well clear of the paddle sweep x 50..78
+  // (the old in-field emitter had them mixing midair — trix, not marble).
   if (n >= CAP - 8 || frame > 560 || frame % 2 !== 0) return;
   const list = [];
   for (let k = 0; k < 8; k++) {
     const jx = ((frame * 37 + k * 101) % 89) / 89 - 0.5;
-    const jy = ((frame * 53 + k * 71) % 97) / 97 - 0.5;
-    list.push([10 + (k % 4) + jx * 0.4, 18 + ((k / 4) | 0) + jy * 0.4]);
+    list.push([24.5 + k * 2 + jx * 0.6, 2.0 + ((frame * 53 + k * 71) % 97) / 97]);
   }
   pour(A, list); pour(B, list);
   n += list.length;
@@ -421,6 +429,7 @@ async function measure() {
       $('divNote').textContent = `(after ${frame} frames — and it will never return to zero)`;
     }
     window.__FLOAT_DIV__ = maxDiv;   // the site gate reads this
+    window.__FRAME__ = frame;
   } finally { divBusy = false; }
 }
 
