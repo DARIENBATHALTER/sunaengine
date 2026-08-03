@@ -555,7 +555,7 @@ function g6browser(cdp, port) {
 // main
 // ---------------------------------------------------------------------------
 const argv = process.argv.slice(2);
-const selected = argv.length ? argv : ['g1', 'g3', 'g2', 'g4', 'g7', 'g6', 'g5'];
+const selected = argv.length ? argv : ['g1', 'g3', 'g2', 'g4', 'g7', 'g8', 'g6', 'g5'];
 
 async function runGate(name, fn) {
   say(`\n== ${name} ==`);
@@ -570,7 +570,7 @@ async function runGate(name, fn) {
   }
 }
 
-const uiGates = selected.filter((g) => ['g1', 'g2', 'g3', 'g4', 'g6', 'g7'].includes(g));
+const uiGates = selected.filter((g) => ['g1', 'g2', 'g3', 'g4', 'g6', 'g7', 'g8'].includes(g));
 const wantsWindowErrors = [];
 
 if (uiGates.length) {
@@ -606,6 +606,21 @@ if (uiGates.length) {
       await cdp.until('float twins diverged past 0.05 wu', `(window.__FLOAT_DIV__ || 0) > 0.05`, 120000, 500);
       const div = await cdp.ev('window.__FLOAT_DIV__');
       A(div > 0.05, `same code, opposite sum order: drifted ${div.toFixed(3)} wu (and can never return)`);
+    });
+    await grabWindowErrors();
+  }
+  // load 4b: g8 — the OTHER half of the pachinko page: the ENGINE pair on the
+  // same machine must finish its first drop digest-equal. Same page load as
+  // g7; the verdict lands at ~frame 1000 (about 17 s of stepping).
+  if (selected.includes('g8')) {
+    await runGate('g8 ENGINE-PACHINKO-AGREES', async () => {
+      if (!selected.includes('g7')) {
+        await cdp.send('Page.navigate', { url: base + '/float.html' });
+        await cdp.until('float page booted', `window.__READY__ === true`, 60000, 500);
+      }
+      await cdp.until('engine pachinko verdict', `!!window.__PACH_ENGINE__`, 180000, 1000);
+      const p = await cdp.ev('JSON.stringify(window.__PACH_ENGINE__)').then(JSON.parse);
+      A(p.equal === true, `run ${p.run}: both engine drops on one digest (equal=${p.equal})`);
     });
     await grabWindowErrors();
   }
