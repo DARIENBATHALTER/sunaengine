@@ -104,10 +104,10 @@
     differently.
   </p>
   <p>
-    An amber paddle churns both pools on the same clock, and the pour changes
-    colour every few hundred milliseconds &mdash; the same bands, in the same
-    order, in both panes. Watch the number between them climb, then stop
-    reading and just look: the stripes mix into DIFFERENT MARBLE. Same
+    An amber paddle churns both pools on the same clock. The pour is pink for
+    its first half and blue for its second, and the shift lands on the same
+    particle in both panes. Watch the number between them climb, then stop
+    reading and just look: two colours, folded into DIFFERENT MARBLE. Same
     physics. Different order of addition.
   </p>
 </div>
@@ -163,7 +163,7 @@
 // on purpose: the summation loop's direction is the entire experiment.
 // ============================================================================
 const W = 128, H = 72;                  // world, in wu
-const CAP = 2200;
+const CAP = 3200;
 const SUB = 2;                          // substeps per frame
 const GRAV = 0.010;                     // wu / substep^2
 const REST = 4.0;                       // measured for the unnormalised poly6 at unit packing
@@ -263,13 +263,10 @@ const PADPTS : u32 = 80u;
   o.kind = 0.0;
   o.col = vec3<f32>(0.24, 0.55, 0.86);
   if (ii >= u.n + PADPTS) { o.clip = vec4<f32>(0.0,0.0,2.0,1.0); return o; }
-  // §dye: the pour changes colour every band of ~240 particles (about a second
-  // of pouring). Colour is a pure function of the SPAWN INDEX, identical
-  // in both panes — so when the stripes end up in different places, that is
-  // the mixing itself disagreeing.
-  var dye = array<vec3<f32>, 3>(
-    vec3<f32>(0.24, 0.55, 0.86), vec3<f32>(0.92, 0.42, 0.55),
-    vec3<f32>(0.93, 0.78, 0.30));
+  // §dye: pink for the first half of the pour, blue for the second. Colour
+  // is a pure function of the SPAWN INDEX, identical in both panes, so when
+  // the two colours end up in different places, that is the mixing itself
+  // disagreeing.
   var p : vec2<f32>;
   var sz = vec2<f32>(0.010, 0.0178);
   if (ii >= u.n) {
@@ -282,7 +279,7 @@ const PADPTS : u32 = 80u;
     sz = vec2<f32>(0.008, 0.0142);
   } else {
     p = pos[ii];
-    o.col = dye[(ii / 240u) % 3u];
+    o.col = select(vec3<f32>(0.92, 0.42, 0.55), vec3<f32>(0.24, 0.55, 0.86), ii >= ${CAP / 2}u);
   }
   let base = vec2<f32>(p.x / ${W}.0 * 2.0 - 1.0, 1.0 - p.y / ${H}.0 * 2.0);
   o.clip = vec4<f32>(base + c[vi] * sz, 0.0, 1.0);
@@ -371,11 +368,11 @@ function pourStep() {
   // A curtain from the TOP: eight columns raining straight down, so the dye
   // bands arrive as clean LAYERS, well clear of the paddle sweep x 50..78
   // (the old in-field emitter had them mixing midair — trix, not marble).
-  if (n >= CAP - 8 || frame > 560 || frame % 2 !== 0) return;
+  if (n >= CAP - 8 || frame > 800 || frame % 2 !== 0) return;
   const list = [];
   for (let k = 0; k < 8; k++) {
     const jx = ((frame * 37 + k * 101) % 89) / 89 - 0.5;
-    list.push([24.5 + k * 2 + jx * 0.6, 2.0 + ((frame * 53 + k * 71) % 97) / 97]);
+    list.push([8.5 + k * 2 + jx * 0.6, 2.0 + ((frame * 53 + k * 71) % 97) / 97]);
   }
   pour(A, list); pour(B, list);
   n += list.length;
