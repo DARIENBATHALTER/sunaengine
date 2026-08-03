@@ -57,7 +57,8 @@
   .panes { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 1.6rem 0 0.8rem; }
   .pane { position: relative; border: 1px solid var(--hair); border-radius: 2px;
           overflow: hidden; background: #05070d; }
-  .pane canvas { display: block; width: 100%; aspect-ratio: 16 / 9; }
+  .pane canvas { display: block; width: 100%; aspect-ratio: 16 / 9;
+    transform: scale(1.06); transform-origin: center; }
   .pane .tag { position: absolute; top: 8px; left: 10px; z-index: 2;
     font: 600 0.7rem/1 var(--mono); letter-spacing: 0.1em; color: var(--ink-2); }
   .verdictRow { display: flex; align-items: baseline; justify-content: center;
@@ -86,6 +87,14 @@
   .pulse i:nth-child(4) { animation-delay: 0.54s; }
   @keyframes bp { 0%,100% { opacity: 0.25; transform: scale(1); }
                   35% { opacity: 1; transform: scale(1.35); } }
+  .binStrip { display: grid; grid-template-columns: repeat(11, 1fr); gap: 5px;
+    margin: 0.5rem auto 0.2rem; max-width: 46rem; }
+  .binStrip .cell { text-align: center; font: 600 0.72rem/1 var(--mono);
+    padding: 0.42rem 0; border-radius: 2px; color: var(--paper);
+    background: var(--hair); transition: background 0.3s ease; }
+  .binStrip .cell.match { background: var(--good); }
+  .binStrip .cell.differ { background: var(--bad); }
+  .binStrip.dim .cell { opacity: 0.3; }
   .rule { border: 0; border-top: 1px solid var(--hair); margin: 3rem auto; max-width: 42rem; }
   a { color: var(--accent); }
 </style>
@@ -141,8 +150,10 @@
     <span>world units</span>
     <span id="binsN" class="small">(dropping&hellip;)</span>
   </div>
+  <div class="binStrip dim" id="binStripF"></div>
   <div class="verdictRow small">
-    <span class="ok">float pachinko never ends the same way twice</span>
+    <span class="ok">one cell per bin: green means both panes counted the same balls in it &middot;
+      float pachinko never ends the same way twice</span>
   </div>
 </div>
 
@@ -182,7 +193,9 @@
   </div>
   <div class="verdictRow">
     <span id="pachVerdict" class="small">first drop in progress&hellip;</span>
+    <span id="binsE" class="small"></span>
   </div>
+  <div class="binStrip dim" id="binStripE"></div>
   <div class="hashes">
     <div class="hash" id="hashEA">&mdash;</div>
     <div class="hash" id="hashEB">&mdash;</div>
@@ -256,7 +269,7 @@ for (let e = 0; e < CAP / 4; e++) {
   for (let h = 0; h < 4; h++) {
     const jx = ((f * 37 + h * 101) % 89) / 89 - 0.5;
     const jy = ((f * 53 + h * 71) % 97) / 97;
-    const wx = MX[h] + jx * 1.6, wy = 4.0 + jy;
+    const wx = MX[h] + jx * 1.6, wy = 5.6 + jy;
     balls.push({
       wx, wy,
       x: Math.round(wx * ONE), y: Math.round(wy * ONE),
@@ -425,7 +438,7 @@ const FURN : u32 = 218u;
       let t = fi - 170u; let h = t / 12u; let j = t % 12u;
       let arm = select(-1.0, 1.0, j >= 6u);
       let tt = f32(j % 6u) / 5.0;
-      p = vec2<f32>(hop[h] + arm * (4.6 - tt * 3.4), 0.8 + tt * 4.4);
+      p = vec2<f32>(hop[h] + arm * (4.6 - tt * 3.4), 2.4 + tt * 4.4);
       o.col = dye[h];
       sz = vec2<f32>(0.011, 0.0196);
     }
@@ -540,6 +553,19 @@ function stepFloat(pane, compute) {
 }
 
 // --- float verdicts: the wu counter and the bin count --------------------
+function renderStrip(el, a, b) {
+  let match = 0;
+  const cells = [];
+  for (let k = 0; k < 11; k++) {
+    const eq = a[k] === b[k];
+    if (eq) match++;
+    cells.push(`<div class="cell ${eq ? 'match' : 'differ'}">${eq ? a[k] : a[k] + '·' + b[k]}</div>`);
+  }
+  el.innerHTML = cells.join('');
+  el.classList.remove('dim');
+  return match;
+}
+
 let divBusy = false, maxDiv = 0;
 async function measure() {
   // n GROWS while the maps await (the schedule keeps releasing), so every
@@ -572,14 +598,14 @@ async function measure() {
     maxDiv = Math.max(maxDiv, m);
     $('divN').textContent = maxDiv.toFixed(3);
     if (frame > FR_VERDICT && nn === CAP) {
-      let diff = 0;
-      for (let k = 0; k < 11; k++) if (binsA[k] !== binsB[k]) diff++;
-      $('binsN').innerHTML = diff > 0
-        ? `run ${run}: <b style="color:var(--bad)">${diff} of 11 bins disagree</b>`
-        : `run ${run}: the bins happen to match; the positions inside them do not`;
-      window.__PACH_FLOAT_BINS__ = diff;
+      const match = renderStrip($('binStripF'), binsA, binsB);
+      $('binsN').innerHTML = match < 11
+        ? `run ${run}: <b style="color:var(--bad)">${match} of 11 bins match</b>`
+        : `run ${run}: the counts happen to match; the positions inside them do not`;
+      window.__PACH_FLOAT_BINS__ = 11 - match;
     } else {
       $('binsN').textContent = `run ${run}: dropping…`;
+      $('binStripF').classList.add('dim');
     }
     window.__FLOAT_DIV__ = maxDiv;   // the site gate reads this (monotone across runs)
     window.__FRAME__ = frame;
@@ -596,7 +622,7 @@ async function measure() {
 // hopper's tint word, and the schedule is SCHED verbatim. Everything below
 // uses the public API from ./src — nothing here is special-cased for us.
 // ============================================================================
-const EEXTRA = 1400;                    // static furniture headroom over CAP
+const EEXTRA = 2400;                    // static furniture headroom over CAP
 let EA = null, EB = null, engineOk = false, firstHash = null;
 
 function buildEngineScene() {
@@ -616,8 +642,21 @@ function buildEngineScene() {
       }
     }
   }
+  // The buckets are FULLY enclosed at two-particle thickness (Darien's call):
+  // a single-file divider column is porous — a spawn-overlap pressure pop can
+  // eject a grain fast enough to thread between two static particles, which
+  // is the "ball through the wall" glitch. Two staggered columns per divider,
+  // a double floor, and double end walls close every gap.
   for (let d = 1; d <= 10; d++) {
-    for (let y = DIVTOP; y <= 71.0; y += 0.65) pts.push([BINW * d, y]);
+    for (const dx of [-0.35, 0.35]) {
+      for (let y = DIVTOP; y <= 71.4; y += 0.55) pts.push([BINW * d + dx, y]);
+    }
+  }
+  for (const fy of [71.0, 71.6]) {
+    for (let x = 0.8; x <= 127.3; x += 0.6) pts.push([x, fy]);
+  }
+  for (const ex of [0.7, 1.3, 126.7, 127.3]) {
+    for (let y = DIVTOP; y <= 71.4; y += 0.55) pts.push([ex, y]);
   }
   const nS = pts.length;
   const pos = new Int32Array(nS * 2), vel = new Int32Array(nS * 2);
@@ -644,6 +683,17 @@ function engineRelease(pane, balls) {
   pane.eng.spawnFluid(balls, { noWeld: true });
 }
 
+async function engineBins(pane) {
+  const st = await pane.eng.readState();
+  const nf = pane.eng.nFluid;
+  const bins = new Array(11).fill(0);
+  for (let i = 0; i < nf; i++) {
+    const x = st[i * 8] / ONE;
+    bins[Math.max(0, Math.min(10, Math.floor(x / BINW)))]++;
+  }
+  return bins;
+}
+
 async function engineVerdict() {
   if (!engineOk) return;
   const [da, db] = await Promise.all([EA.eng.digest(), EB.eng.digest()]);
@@ -663,7 +713,12 @@ async function engineVerdict() {
     v.innerHTML = `run ${run}: same digest as each other${sameAsFirst
       ? `, and <b class="ok" style="font-size:inherit">identical to run 1</b> — every drop, the same 64 hex chars` : ''}`;
   }
-  window.__PACH_ENGINE__ = { run, equal, sameAsFirst };
+  const [ba, bb] = await Promise.all([engineBins(EA), engineBins(EB)]);
+  const match = renderStrip($('binStripE'), ba, bb);
+  $('binsE').innerHTML = match === 11
+    ? `<b class="ok" style="color:var(--good)">${match} of 11 bins match</b>`
+    : `<b style="color:var(--bad)">${match} of 11 bins match</b>`;
+  window.__PACH_ENGINE__ = { run, equal, sameAsFirst, binsMatch: match };
 }
 
 function resetAll() {
