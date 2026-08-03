@@ -151,7 +151,7 @@
   <p>
     Below is the same machine built inside <b>SunaEngine</b>, the integer
     engine this site is about, running twice on your GPU. The balls are the
-    engine's own sand, dyed per hopper, the pegs and bins are stamped from
+    engine's own powder, dyed per hopper, the pegs and bins are stamped from
     stone, and the
     release schedule is the exact schedule the control group uses.
   </p>
@@ -213,7 +213,7 @@
 </div>
 
 <script type="module">
-import { createEngine, MAT_SAND, MAT_STONE, ONE } from './src/engine.js';
+import { createEngine, MAT_DUST, MAT_STONE, ONE } from './src/engine.js';
 import { createRenderer } from './src/render.js';
 
 // ============================================================================
@@ -261,9 +261,10 @@ for (let e = 0; e < CAP / 4; e++) {
       wx, wy,
       x: Math.round(wx * ONE), y: Math.round(wy * ONE),
       vx: 0, vy: Math.round(0.35 * ONE),
-      // SAND, not orbies: orbies wear the renderer's own rainbow bead
-      // treatment which ignores tints, and the four-dye story needs dye
-      mat: MAT_SAND, tint: TINTW[h],
+      // DUST (the powder), not orbies or sand: orbies wear the renderer's
+      // rainbow bead treatment which ignores tints, and sand ran too
+      // viscous next to the float pair (Darien's eye) — powder matches
+      mat: MAT_DUST, tint: TINTW[h],
     });
   }
   SCHED.push({ frame: f, balls });
