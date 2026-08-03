@@ -104,7 +104,9 @@
     differently.
   </p>
   <p>
-    So watch the number between them. It starts at zero. It never goes back.
+    An amber paddle churns both pools on the same clock, so neither can ever
+    settle. Watch the number between them. It starts at zero. It never goes
+    back &mdash; and soon the waves themselves stop agreeing.
   </p>
 </div>
 
@@ -205,12 +207,32 @@ fn forces(@builtin(global_invocation_id) g : vec3<u32>) {
   prd[i] = vec2<f32>(fx, fy);
 }
 
-// Pass 2 — integrate, walls, done.
+// Pass 2 — integrate, paddle, walls. The paddle is a spinning bar both
+// panes share, driven by the frame counter: a deterministic agitator that
+// keeps the pools CHURNING, so the order-drift shows up in the wave shapes
+// themselves, not just the number.
+const PADL : f32 = 14.0;    // arm half-length, wu
+const PADW : f32 = 1.7;     // arm half-thickness, wu
+const PADO : f32 = 0.0125;  // rad per substep
+
 @compute @workgroup_size(64)
 fn integrate(@builtin(global_invocation_id) g : vec3<u32>) {
   let i = g.x; if (i >= u.n) { return; }
   var v = (vel[i] + prd[i]) * DAMP;
   v.y = v.y + G;
+  {
+    let th = f32(u.pad0) * PADO * 2.0;
+    let c = vec2<f32>(W * 0.5, H - 11.0);
+    let ax = vec2<f32>(cos(th), sin(th));
+    let r = pos[i] - c;
+    let s = dot(r, ax);
+    let dperp = abs(r.x * ax.y - r.y * ax.x);
+    if (abs(s) < PADL && dperp < PADW) {
+      // the bar's surface speed at signed arm position s, perpendicular to it
+      let tang = vec2<f32>(-ax.y, ax.x) * (s * PADO * 2.0);
+      v = mix(v, tang, 0.5);
+    }
+  }
   var p = pos[i] + v;
   if (p.x < 1.0)     { p.x = 1.0;     v.x = abs(v.x) * 0.3; }
   if (p.x > W - 1.0) { p.x = W - 1.0; v.x = -abs(v.x) * 0.3; }
@@ -225,16 +247,31 @@ const DRAW_WGSL = /* wgsl */`
 struct U { n : u32, dir : u32, pad0 : u32, pad1 : u32 };
 @group(0) @binding(0) var<uniform> u : U;
 @group(0) @binding(1) var<storage, read> pos : array<vec2<f32>>;
-struct VO { @builtin(position) clip : vec4<f32>, @location(0) uv : vec2<f32> };
+struct VO { @builtin(position) clip : vec4<f32>, @location(0) uv : vec2<f32>,
+            @location(1) kind : f32 };
+const PADPTS : u32 = 80u;
 @vertex fn vs(@builtin(vertex_index) vi : u32, @builtin(instance_index) ii : u32) -> VO {
   var c = array<vec2<f32>, 6>(
     vec2<f32>(-1.0,-1.0), vec2<f32>(1.0,-1.0), vec2<f32>(-1.0,1.0),
     vec2<f32>(-1.0, 1.0), vec2<f32>(1.0,-1.0), vec2<f32>( 1.0,1.0));
   var o : VO;
-  if (ii >= u.n) { o.clip = vec4<f32>(0.0,0.0,2.0,1.0); return o; }
-  let p = pos[ii];
+  o.kind = 0.0;
+  if (ii >= u.n + PADPTS) { o.clip = vec4<f32>(0.0,0.0,2.0,1.0); return o; }
+  var p : vec2<f32>;
+  var sz = vec2<f32>(0.010, 0.0178);
+  if (ii >= u.n) {
+    // paddle points, computed from the frame — no buffer, same math as the force
+    let k = f32(ii - u.n);
+    let th = f32(u.pad0) * 0.0125 * 2.0;
+    let s = (k / 79.0 - 0.5) * 28.0;
+    p = vec2<f32>(${W}.0 * 0.5, ${H}.0 - 11.0) + vec2<f32>(cos(th), sin(th)) * s;
+    o.kind = 1.0;
+    sz = vec2<f32>(0.008, 0.0142);
+  } else {
+    p = pos[ii];
+  }
   let base = vec2<f32>(p.x / ${W}.0 * 2.0 - 1.0, 1.0 - p.y / ${H}.0 * 2.0);
-  o.clip = vec4<f32>(base + c[vi] * vec2<f32>(0.010, 0.0178), 0.0, 1.0);
+  o.clip = vec4<f32>(base + c[vi] * sz, 0.0, 1.0);
   o.uv = c[vi];
   return o;
 }
@@ -242,6 +279,7 @@ struct VO { @builtin(position) clip : vec4<f32>, @location(0) uv : vec2<f32> };
   let d = length(v.uv);
   if (d > 1.0) { discard; }
   let a = smoothstep(1.0, 0.55, d);
+  if (v.kind > 0.5) { return vec4<f32>(0.95 * a, 0.72 * a, 0.28 * a, a); }
   return vec4<f32>(0.24 * a, 0.55 * a, 0.86 * a, a);
 }
 `;
@@ -324,7 +362,7 @@ function pourStep() {
 }
 
 function step(pane) {
-  device.queue.writeBuffer(pane.bufs.uni, 0, new Uint32Array([n, pane.dir, 0, 0]));
+  device.queue.writeBuffer(pane.bufs.uni, 0, new Uint32Array([n, pane.dir, frame, 0]));
   const enc = device.createCommandEncoder();
   for (let s = 0; s < SUB; s++) {
     const wg = Math.ceil(n / 64);
@@ -339,7 +377,7 @@ function step(pane) {
   const rp = enc.beginRenderPass({ colorAttachments: [{ view, loadOp: 'clear',
     clearValue: { r: 0.02, g: 0.027, b: 0.05, a: 1 }, storeOp: 'store' }] });
   rp.setPipeline(pane.drawPipe); rp.setBindGroup(0, pane.drawGroup);
-  rp.draw(6, n);
+  rp.draw(6, n + 80);
   rp.end();
   device.queue.submit([enc.finish()]);
 }
