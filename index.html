@@ -267,6 +267,19 @@
   button.quiet { border-color: var(--hair); color: var(--ink-2); }
   button.quiet:hover { border-color: var(--ink-2); }
   button[disabled] { opacity: 0.4; pointer-events: none; }
+  a.ctaGreen {
+    display: inline-block;
+    font: 700 0.92rem/1 var(--sans);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #071309;
+    background: #3fcf6e;
+    border: 1px solid #3fcf6e;
+    border-radius: 3px;
+    padding: 1rem 1.7rem;
+    text-decoration: none;
+  }
+  a.ctaGreen:hover { background: #55e284; border-color: #55e284; }
   .hint {
     font: 400 0.78rem/1.5 var(--sans);
     color: var(--ink-2);
@@ -514,8 +527,8 @@
         indices and fed to both sims identically, so they stay bit-exact</span>
     </div>
   </div>
-  <p style="text-align:center; margin-top:0.9rem; font-size:0.92rem;">
-    <a href="float.html">Compare to floating-point physics &rarr;</a>
+  <p style="text-align:center; margin-top:1.4rem;">
+    <a class="ctaGreen" href="float.html">Compare to floating-point physics &rarr;</a>
   </p>
 </section>
 
