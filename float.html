@@ -104,11 +104,14 @@
     differently.
   </p>
   <p>
-    An amber paddle churns both pools on the same clock. The pour is pink for
-    its first half and blue for its second, and the shift lands on the same
-    particle in both panes. Watch the number between them climb, then stop
-    reading and just look: two colours, folded into DIFFERENT MARBLE. Same
-    physics. Different order of addition.
+    Five amber pegs hang in the air, an amber paddle spins on the same clock,
+    and the floor is a trampoline: nothing ever settles, every particle is
+    thrown back up through the peg field forever. A curved surface doubles a
+    hair of difference with every bounce, so the drift compounds without
+    limit. The pour is pink for its first half and blue for its second, and
+    the shift lands on the same particle in both panes. Watch the number
+    climb, then pick one particle and try to find its twin in the other
+    pane. Same physics. Different order of addition.
   </p>
 </div>
 
@@ -163,7 +166,7 @@
 // on purpose: the summation loop's direction is the entire experiment.
 // ============================================================================
 const W = 128, H = 72;                  // world, in wu
-const CAP = 3200;
+const CAP = 1000;
 const SUB = 2;                          // substeps per frame
 const GRAV = 0.010;                     // wu / substep^2
 const REST = 4.0;                       // measured for the unnormalised poly6 at unit packing
@@ -239,10 +242,32 @@ fn integrate(@builtin(global_invocation_id) g : vec3<u32>) {
     }
   }
   var p = pos[i] + v;
+  // three pegs in the pour's path. A convex surface doubles a tiny
+  // difference in impact point on every bounce, so the drift between the
+  // panes compounds fast. Same coordinates, same math, both panes.
+  var pegs = array<vec2<f32>, 5>(
+    vec2<f32>(15.0, 26.0), vec2<f32>(40.0, 38.0), vec2<f32>(64.0, 22.0),
+    vec2<f32>(88.0, 40.0), vec2<f32>(110.0, 28.0));
+  for (var pk = 0u; pk < 5u; pk = pk + 1u) {
+    let dpeg = p - pegs[pk];
+    let L = length(dpeg);
+    if (L < 4.6 && L > 0.001) {
+      let nrm = dpeg / L;
+      p = pegs[pk] + nrm * 4.6;
+      let vn = dot(v, nrm);
+      if (vn < 0.0) { v = v - nrm * (vn * 1.7); }
+    }
+  }
   if (p.x < 1.0)     { p.x = 1.0;     v.x = abs(v.x) * 0.3; }
   if (p.x > W - 1.0) { p.x = W - 1.0; v.x = -abs(v.x) * 0.3; }
   if (p.y < 1.0)     { p.y = 1.0;     v.y = abs(v.y) * 0.3; }
-  if (p.y > H - 1.0) { p.y = H - 1.0; v.y = -abs(v.y) * 0.3; }
+  if (p.y > H - 1.5) {
+    p.y = H - 1.5;
+    // trampoline floor: the exhibit never settles. Everything is thrown
+    // back up through the peg field forever, and every pass amplifies the
+    // drift again. Launch speed is a pure function of x, same both panes.
+    v.y = -(0.78 + fract(p.x * 0.37) * 0.34);
+  }
   vel[i] = v;
   pos[i] = p;
 }
@@ -262,14 +287,22 @@ const PADPTS : u32 = 80u;
   var o : VO;
   o.kind = 0.0;
   o.col = vec3<f32>(0.24, 0.55, 0.86);
-  if (ii >= u.n + PADPTS) { o.clip = vec4<f32>(0.0,0.0,2.0,1.0); return o; }
+  if (ii >= u.n + PADPTS + 5u) { o.clip = vec4<f32>(0.0,0.0,2.0,1.0); return o; }
   // §dye: pink for the first half of the pour, blue for the second. Colour
   // is a pure function of the SPAWN INDEX, identical in both panes, so when
   // the two colours end up in different places, that is the mixing itself
   // disagreeing.
   var p : vec2<f32>;
-  var sz = vec2<f32>(0.010, 0.0178);
-  if (ii >= u.n) {
+  var sz = vec2<f32>(0.020, 0.0356);
+  if (ii >= u.n + PADPTS) {
+    // the five pegs, same coordinates as the integrate pass
+    var pegs = array<vec2<f32>, 5>(
+      vec2<f32>(15.0, 26.0), vec2<f32>(40.0, 38.0), vec2<f32>(64.0, 22.0),
+      vec2<f32>(88.0, 40.0), vec2<f32>(110.0, 28.0));
+    p = pegs[ii - u.n - PADPTS];
+    o.kind = 1.0;
+    sz = vec2<f32>(0.0672, 0.1194);
+  } else if (ii >= u.n) {
     // paddle points, computed from the frame — no buffer, same math as the force
     let k = f32(ii - u.n);
     let th = f32(u.pad0) * 0.0125 * 2.0;
@@ -368,11 +401,11 @@ function pourStep() {
   // A curtain from the TOP: eight columns raining straight down, so the dye
   // bands arrive as clean LAYERS, well clear of the paddle sweep x 50..78
   // (the old in-field emitter had them mixing midair — trix, not marble).
-  if (n >= CAP - 8 || frame > 800 || frame % 2 !== 0) return;
+  if (n >= CAP - 4 || frame > 800 || frame % 2 !== 0) return;
   const list = [];
-  for (let k = 0; k < 8; k++) {
+  for (let k = 0; k < 4; k++) {
     const jx = ((frame * 37 + k * 101) % 89) / 89 - 0.5;
-    list.push([8.5 + k * 2 + jx * 0.6, 2.0 + ((frame * 53 + k * 71) % 97) / 97]);
+    list.push([9.0 + k * 3.5 + jx * 0.8, 2.0 + ((frame * 53 + k * 71) % 97) / 97]);
   }
   pour(A, list); pour(B, list);
   n += list.length;
@@ -394,7 +427,7 @@ function step(pane) {
   const rp = enc.beginRenderPass({ colorAttachments: [{ view, loadOp: 'clear',
     clearValue: { r: 0.02, g: 0.027, b: 0.05, a: 1 }, storeOp: 'store' }] });
   rp.setPipeline(pane.drawPipe); rp.setBindGroup(0, pane.drawGroup);
-  rp.draw(6, n + 80);
+  rp.draw(6, n + 85);
   rp.end();
   device.queue.submit([enc.finish()]);
 }
