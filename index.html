@@ -743,7 +743,8 @@ console.log(await sim.digest());
   <p>
     Those questions eventually became SunaEngine. SunaBox just happens to be
     the first thing built with it. You can play it free in your browser at
-    <a href="https://sunabox.dev">sunabox.dev</a>.
+    <a href="https://sunabox.dev">sunabox.dev</a><span data-steam-tail>, and the
+    full version is coming to Steam</span>.
   </p>
 
   <footer>
@@ -1321,6 +1322,18 @@ if (AUTOTEST) {
 } else {
   main();
 }
+</script>
+<script>
+// The Steam switch, same contract as sunabox.dev: fill it in on approval and
+// the sentence above becomes a link; leave it empty and it stays honest text.
+const STEAM_URL = '';
+(() => {
+  if (!STEAM_URL) return;
+  for (const el of document.querySelectorAll('[data-steam-tail]')) {
+    el.innerHTML = ', and the full version is <a href="' + STEAM_URL +
+      '" target="_blank" rel="noopener">on Steam</a>';
+  }
+})();
 </script>
 </body>
 </html>
