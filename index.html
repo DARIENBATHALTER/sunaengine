@@ -599,25 +599,60 @@
   <h2><span class="figno">Figure 3</span> — One Dimension Up</h2>
   <div class="figintro">
     <p>
-      The determinism technique is dimension-agnostic, and this is the
-      demonstration: a 3D particle fluid built on the same fixed-point
+      The determinism technique is dimension-agnostic, and here it is one
+      dimension up: a 3D particle fluid built on the same fixed-point
       primitives, the same round-half-to-even arithmetic, the same
-      canonicalized neighbour ordering, one dimension up. The solver
-      contains no floats; float appears only in the renderer, which carries
-      no determinism obligation.
-    </p>
-    <p>
-      Honest scope: this is one material, no bonds, no thermal, no rigid
-      bodies. It is not SunaBox in 3D. The claim it supports is narrower
-      and still worth making: the method generalises.
+      canonicalized neighbour ordering. The solver contains no floats;
+      float appears only in the renderer, which carries no determinism
+      obligation.
     </p>
   </div>
   <video src="assets/3d.mp4" poster="assets/3d-poster.jpg" muted loop autoplay playsinline
     style="width:100%;max-width:56rem;border-radius:10px;display:block"></video>
   <p style="margin-top:0.9rem">
-    <a href="3d/index.html"><strong>Open the live 3D demo</strong></a> — it simulates on
-    your GPU. Drag to orbit, scroll to zoom. WebGPU required.
+    <button id="open3d" style="font:600 14px/1 inherit;padding:11px 20px;border-radius:8px;
+      border:1px solid #57b6ff;background:transparent;color:#57b6ff;cursor:pointer">
+      ▶ Open the live 3D demo</button>
+    <span style="color:#8291b5;font-size:13px;margin-left:10px">simulates on your GPU ·
+      drag to orbit, scroll to zoom · WebGPU required</span>
   </p>
+  <div id="modal3d" style="display:none;position:fixed;inset:0;z-index:60;
+    background:rgba(4,6,12,.78);backdrop-filter:blur(3px)" role="dialog" aria-modal="true" aria-label="Live 3D demo">
+    <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+      width:min(92vw,760px);height:min(80vh,560px);background:#06080f;border:1px solid #1b2440;
+      border-radius:12px;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.6)">
+      <button id="close3d" aria-label="Close" style="position:absolute;top:8px;right:8px;z-index:2;
+        width:32px;height:32px;border-radius:8px;border:1px solid #1b2440;background:#0b1020;
+        color:#8291b5;font-size:17px;cursor:pointer">×</button>
+      <a href="3d/index.html" target="_blank" rel="noopener" style="position:absolute;top:14px;left:14px;
+        z-index:2;color:#8291b5;font-size:11.5px">open full version ↗</a>
+      <iframe id="frame3d" title="SunaEngine 3D live demo" style="width:100%;height:100%;border:0;display:block"></iframe>
+    </div>
+  </div>
+  <script>
+  (() => {
+    const modal = document.getElementById('modal3d');
+    const frame = document.getElementById('frame3d');
+    const open = () => {
+      // lazy: the iframe gets a src only while open, so the page never runs a
+      // second GPU context under the 2D figures, and closing frees it.
+      frame.src = '3d/index.html?embed=1';
+      modal.style.display = 'block';
+      document.body.style.overflow = 'hidden';
+    };
+    const close = () => {
+      modal.style.display = 'none';
+      frame.src = 'about:blank';
+      document.body.style.overflow = '';
+    };
+    document.getElementById('open3d').addEventListener('click', open);
+    document.getElementById('close3d').addEventListener('click', close);
+    modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+    addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && modal.style.display === 'block') close();
+    });
+  })();
+  </script>
 </section>
 
 <hr class="rule">

@@ -19,7 +19,7 @@ const CFG = {
   SPACING: 1.0,
   substeps: 2,
   iters: 3,
-  gravStep: 96,
+  gravStep: 180,   // 2026-08-16 feel ruling: the pour was floaty
   damp: 65340,
   stirAmp: 0,
 };
@@ -178,9 +178,9 @@ function buildLUTs() {
 //   f0    reflectance x1000, used by the renderer only.
 const MAT_WORDS = 4;
 const MATERIALS = [
-  { key: 'water',   name: 'Water',   grav:  96, rhoW:   0, damp: 65340, f0:  20 },
-  { key: 'oil',     name: 'Oil',     grav:  58, rhoW:  30, damp: 65180, f0:  35 },
-  { key: 'mercury', name: 'Mercury', grav: 240, rhoW:   0, damp: 65420, f0: 700 },
+  { key: 'water',   name: 'Water',   grav: 180, rhoW:   0, damp: 65340, f0:  20 },
+  { key: 'oil',     name: 'Oil',     grav: 110, rhoW:  30, damp: 65180, f0:  35 },
+  { key: 'mercury', name: 'Mercury', grav: 440, rhoW:   0, damp: 65420, f0: 700 },
   { key: 'gas',     name: 'Gas',     grav: -46, rhoW: 120, damp: 64700, f0:  10 },
   { key: 'orbies',  name: 'Orbies',  grav:  88, rhoW: 210, damp: 65330, f0:  60 },
   { key: 'goo',     name: 'Goo',     grav:  92, rhoW:  50, damp: 62900, f0:  45 },

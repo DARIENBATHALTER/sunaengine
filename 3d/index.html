@@ -11,6 +11,21 @@
     --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
   }
   * { box-sizing: border-box; }
+  /* §EMBED (2026-08-16): ?embed=1 strips the page to the tank — no side
+     panel, no hud, canvas fills the frame. Served inside the Figure 3 modal. */
+  body.embed #side, body.embed #hud { display: none !important; }
+  body.embed #wrap { padding: 0; gap: 0; max-width: none; }
+  body.embed #stage { border-radius: 0; border: none; }
+  #load { position: absolute; inset: 0; display: grid; place-items: center;
+    background: #06080f; z-index: 5; transition: opacity .4s; }
+  #load.off { opacity: 0; pointer-events: none; }
+  #load .ring { width: 44px; height: 44px; border-radius: 50%;
+    border: 3px solid #1b2440; border-top-color: #57b6ff;
+    animation: lspin 0.9s linear infinite; }
+  #load .msg { position: absolute; margin-top: 76px; color: #8291b5;
+    font: 12px var(--mono); letter-spacing: .08em; }
+  @keyframes lspin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { #load .ring { animation: none; border-top-color: #57b6ff; } }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink);
                font: 13px/1.5 ui-sans-serif, -apple-system, "Segoe UI", sans-serif; overflow: hidden; }
   #wrap { display: flex; height: 100%; }
@@ -55,6 +70,10 @@
     <canvas id="c"></canvas>
     <div id="hud"></div>
     <div id="err"></div>
+    <div id="load"><div class="ring"></div><div class="msg">compiling the solver on your GPU…</div></div>
+    <div id="applabel" style="position:absolute;left:12px;bottom:10px;z-index:3;
+      font:600 11px/1 var(--mono);letter-spacing:.14em;color:#8291b5;
+      text-transform:uppercase;pointer-events:none">SunaEngine 3D render</div>
   </div>
 
   <div id="side">
@@ -121,10 +140,13 @@ const bind = (id, key, fmt = v => v) => {
   el.addEventListener('input', set); set();
 };
 
+if (new URLSearchParams(location.search).get('embed')) document.body.classList.add('embed');
 let app;
 try {
   app = await new App($('c'), ui).boot();
+  $('load').classList.add('off');
 } catch (e) {
+  $('load').classList.add('off');
   $('err').style.display = 'grid';
   $('err').textContent = e.message;
   console.error(e);
