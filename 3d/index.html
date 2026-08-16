@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SunaEngine 3D — deterministic fluid</title>
+<style>
+  :root {
+    --bg: #06080f; --panel: #0b1020; --line: #1b2440;
+    --ink: #e8eefc; --dim: #8291b5; --accent: #57b6ff; --good: #46d39a; --bad: #ff6b6b;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink);
+               font: 13px/1.5 ui-sans-serif, -apple-system, "Segoe UI", sans-serif; overflow: hidden; }
+  #wrap { display: flex; height: 100%; }
+  #stage { flex: 1; position: relative; min-width: 0; }
+  canvas { width: 100%; height: 100%; display: block; cursor: grab; }
+  canvas:active { cursor: grabbing; }
+
+  #side { width: 310px; flex: none; background: var(--panel); border-left: 1px solid var(--line);
+          overflow-y: auto; padding: 14px; }
+  h1 { font-size: 14px; margin: 0 0 2px; letter-spacing: .02em; }
+  .sub { color: var(--dim); font-size: 11px; margin-bottom: 14px; }
+  fieldset { border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin: 0 0 12px; }
+  legend { color: var(--dim); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; padding: 0 5px; }
+  label { display: flex; align-items: center; gap: 8px; margin: 7px 0; font-size: 12px; }
+  label span:first-child { flex: 1; color: var(--dim); }
+  input[type=range] { width: 122px; accent-color: var(--accent); }
+  label output { width: 42px; text-align: right; font-family: var(--mono); font-size: 11px; }
+  button { width: 100%; padding: 8px; margin-top: 6px; background: #16203c; color: var(--ink);
+           border: 1px solid var(--line); border-radius: 6px; cursor: pointer; font-size: 12px; }
+  button:hover:not(:disabled) { background: #1d2a4e; border-color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  .row { display: flex; gap: 6px; }
+  button.on { background: #1d3a6e; border-color: var(--accent); }
+  .chips { display: flex; flex-wrap: wrap; gap: 5px; }
+  .chip { flex: 0 0 auto; padding: 4px 9px; border-radius: 999px; cursor: pointer; font-size: 11px;
+          border: 1px solid var(--line); background: #101833; color: var(--dim); }
+  .chip.on { color: var(--ink); }
+  #hud { position: absolute; left: 14px; bottom: 14px; font-family: var(--mono); font-size: 11px;
+         color: var(--dim); background: rgba(6,8,15,.62); padding: 8px 11px; border-radius: 6px;
+         border: 1px solid var(--line); line-height: 1.7; }
+  #hud b { color: var(--ink); font-weight: 600; }
+  #verify { font-family: var(--mono); font-size: 10px; line-height: 1.65; word-break: break-all; }
+  .ok { color: var(--good); } .no { color: var(--bad); } .dim { color: var(--dim); }
+  .hash { color: var(--accent); }
+  #err { position: absolute; inset: 0; display: none; place-content: center; padding: 40px;
+         text-align: center; color: var(--bad); font-family: var(--mono); font-size: 13px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="stage">
+    <canvas id="c"></canvas>
+    <div id="hud"></div>
+    <div id="err"></div>
+  </div>
+
+  <div id="side">
+    <h1>SunaEngine 3D</h1>
+    <div class="sub">Deterministic fluid. Integer fixed point, no float below the renderer.</div>
+
+    <fieldset>
+      <legend>Simulation</legend>
+      <label><span>particles</span><input type="range" id="n" min="6000" max="60000" step="2000" value="30000"><output id="nO"></output></label>
+      <label><span>scene</span><select id="scene" style="flex:0 0 122px;background:#16203c;color:var(--ink);border:1px solid var(--line);border-radius:5px;padding:3px">
+        <option value="pool">pool</option><option value="layers">layers</option></select></label>
+      <label><span>substeps/frame</span><input type="range" id="ss" min="1" max="4" step="1" value="2"><output id="ssO"></output></label>
+      <label><span>solver iters</span><input type="range" id="it" min="1" max="6" step="1" value="3"><output id="itO"></output></label>
+      <div class="row"><button id="play">Pause</button><button id="reset">Reset</button></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Brush</legend>
+      <div class="row" style="margin-bottom:8px">
+        <button id="modePush" class="on">Push</button><button id="modePaint">Pour</button>
+      </div>
+      <div id="mats" class="chips"></div>
+      <label style="margin-top:8px"><span>pour rate</span><input type="range" id="rate" min="20" max="240" step="10" value="90"><output id="rateO"></output></label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Cursor ball</legend>
+      <label><span>enabled</span><input type="checkbox" id="ballOn" checked style="margin-right:auto"></label>
+      <label><span>radius</span><input type="range" id="ballR" min="1.5" max="6" step="0.1" value="3.4"><output id="ballRO"></output></label>
+      <div class="dim" style="font-size:11px;line-height:1.5;margin-top:6px">
+        Move to aim. In <b>Push</b>, left-drag orbits. In <b>Pour</b>, left-drag pours and <b>alt-drag</b> orbits.
+        <b>Right-drag</b> (or shift-drag) raises and lowers the ball. Wheel zooms.
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Water</legend>
+      <label><span>bead radius</span><input type="range" id="rad" min="0.6" max="2.4" step="0.05" value="1.6"><output id="radO"></output></label>
+      <label><span>surface blur</span><input type="range" id="blur" min="0.2" max="3.0" step="0.1" value="1.4"><output id="blurO"></output></label>
+      <label><span>refraction</span><input type="range" id="refr" min="0" max="60" step="1" value="20"><output id="refrO"></output></label>
+      <label><span>dispersion</span><input type="range" id="disp" min="0" max="0.8" step="0.02" value="0.26"><output id="dispO"></output></label>
+      <label><span>absorption</span><input type="range" id="abs" min="0" max="0.5" step="0.01" value="0.13"><output id="absO"></output></label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Determinism</legend>
+      <div id="adapter" class="dim" style="font-family:var(--mono);font-size:10px;margin-bottom:8px"></div>
+      <button id="verifyBtn">Run verification</button>
+      <button id="controlBtn">Run negative control</button>
+      <div id="verify" style="margin-top:10px"></div>
+    </fieldset>
+  </div>
+</div>
+
+<script type="module">
+import { App, CFG } from './app.js';
+
+const $ = id => document.getElementById(id);
+const ui = { radius: 1.6, blur: 1.4, refract: 20, dispersion: 0.26, absorb: 0.13, view: 0 };
+
+const bind = (id, key, fmt = v => v) => {
+  const el = $(id), out = $(id + 'O');
+  const set = () => { const v = parseFloat(el.value); ui[key] = v; out.textContent = fmt(v); };
+  el.addEventListener('input', set); set();
+};
+
+let app;
+try {
+  app = await new App($('c'), ui).boot();
+} catch (e) {
+  $('err').style.display = 'grid';
+  $('err').textContent = e.message;
+  console.error(e);
+  throw e;
+}
+
+window.__app = app; window.__CFG = CFG;   // diagnostics handle
+
+bind('rad', 'radius', v => v.toFixed(2));
+bind('blur', 'blur', v => v.toFixed(1));
+bind('refr', 'refract', v => v | 0);
+bind('disp', 'dispersion', v => v.toFixed(2));
+bind('abs', 'absorb', v => v.toFixed(2));
+
+$('n').addEventListener('input', e => { $('nO').textContent = (+e.target.value).toLocaleString(); });
+$('n').addEventListener('change', e => { app.reset(+e.target.value); });
+$('nO').textContent = (+$('n').value).toLocaleString();
+
+$('ss').addEventListener('input', e => { CFG.substeps = +e.target.value; $('ssO').textContent = e.target.value; });
+$('it').addEventListener('input', e => { CFG.iters = +e.target.value; $('itO').textContent = e.target.value; });
+$('ssO').textContent = CFG.substeps; $('itO').textContent = CFG.iters;
+
+$('play').addEventListener('click', () => {
+  app.running = !app.running;
+  $('play').textContent = app.running ? 'Pause' : 'Play';
+});
+$('reset').addEventListener('click', () => app.reset(+$('n').value, $('scene').value));
+$('scene').addEventListener('change', () => app.reset(+$('n').value, $('scene').value));
+
+const MATS = [
+  ['Water',  '#2f8fd0'], ['Oil',    '#c08a2a'], ['Mercury', '#b9c2cc'],
+  ['Gas',    '#8fa6c4'], ['Orbies', '#d24bd0'], ['Goo',     '#4ec24e'],
+];
+MATS.forEach(([name, col], i) => {
+  const el = document.createElement('div');
+  el.className = 'chip' + (i === 0 ? ' on' : '');
+  el.textContent = name;
+  el.style.borderColor = col;
+  el.addEventListener('click', () => {
+    app.brush.mat = i;
+    [...$('mats').children].forEach((c, k) => c.classList.toggle('on', k === i));
+    [...$('mats').children].forEach((c, k) => c.style.background = k === i ? col + '33' : '#101833');
+    setMode('paint');
+  });
+  $('mats').appendChild(el);
+});
+
+const setMode = (m) => {
+  app.brush.mode = m;
+  $('modePush').classList.toggle('on', m === 'push');
+  $('modePaint').classList.toggle('on', m === 'paint');
+};
+$('modePush').addEventListener('click', () => setMode('push'));
+$('modePaint').addEventListener('click', () => setMode('paint'));
+$('rate').addEventListener('input', e => { app.brush.rate = +e.target.value; $('rateO').textContent = e.target.value; });
+$('rateO').textContent = $('rate').value;
+
+app.ballEnabled = $('ballOn').checked;
+$('ballOn').addEventListener('change', e => {
+  app.ballEnabled = e.target.checked;
+  if (!e.target.checked) app.ball.on = false;
+});
+$('ballR').addEventListener('input', e => {
+  $('ballRO').textContent = (+e.target.value).toFixed(1);
+  app.setBallRadius(+e.target.value);
+});
+$('ballRO').textContent = (+$('ballR').value).toFixed(1);
+
+$('adapter').textContent =
+  `${app.adapterInfo.vendor} / ${app.adapterInfo.architecture || '—'}`;
+
+app.reset(+$('n').value);
+
+// ------------------------------------------------------------------ verify
+const CHECKPOINTS = [1, 10, 100, 400];
+const v = $('verify');
+const btns = () => [$('verifyBtn'), $('controlBtn')];
+
+async function runChain(defeat, scene) {
+  app.reset(+$('n').value, scene);
+  const out = {};
+  let done = 0;
+  for (const cp of CHECKPOINTS) {
+    app.runSubsteps(cp - done, defeat);
+    done = cp;
+    out[cp] = await app.chain();
+  }
+  return out;
+}
+
+const guard = async (fn) => {
+  btns().forEach(b => b.disabled = true);
+  const was = app.running;
+  app.running = false;
+  try { await fn(); } finally {
+    app.reset(+$('n').value);
+    app.running = was;
+    btns().forEach(b => b.disabled = false);
+  }
+};
+
+// The shown scene, run twice, compared at four checkpoints.
+const verifyPool = () => guard(async () => {
+  v.innerHTML = `<span class="dim">pool · run A…</span>`;
+  const A = await runChain(false, 'pool');
+  v.innerHTML = `<span class="dim">pool · run B…</span>`;
+  const B = await runChain(false, 'pool');
+
+  const rows = CHECKPOINTS.map(cp => {
+    const same = A[cp] === B[cp];
+    return `<div>${String(cp).padStart(4)} substeps <span class="${same ? 'ok' : 'no'}">` +
+           `${same ? 'match' : 'DIFFER'}</span></div>`;
+  }).join('');
+  const all = CHECKPOINTS.every(cp => A[cp] === B[cp]);
+
+  v.innerHTML = `<div class="dim" style="margin-bottom:4px">pool, canonical order</div>${rows}` +
+    (all ? `<div class="ok">bit-identical across runs.</div>`
+         : `<div class="no">NOT deterministic — investigate.</div>`) +
+    `<div class="hash" style="margin-top:6px">${A[CHECKPOINTS.at(-1)]}</div>` +
+    `<div class="dim" style="margin-top:4px">${app.adapterInfo.vendor} / ${app.adapterInfo.architecture || '—'}</div>`;
+});
+
+// Stage C. A sparse scene CANNOT test ordering: one particle per cell means no
+// atomic contention, so scatter lands in invocation order and defeating
+// canonicalize provably changes nothing. Run the control overdense or it is
+// theatre. Reported as unique-chains-of-N, the only honest summary of a
+// nondeterministic process.
+const RUNS = 5;
+const verifyControl = () => guard(async () => {
+  const tally = async (defeat, label) => {
+    const set = new Set();
+    for (let i = 0; i < RUNS; i++) {
+      v.innerHTML = `<span class="dim">overdense · ${label} ${i + 1}/${RUNS}…</span>`;
+      set.add((await runChain(defeat, 'overdense'))[CHECKPOINTS.at(-1)]);
+    }
+    return set;
+  };
+  const canon = await tally(false, 'canonical');
+  const def   = await tally(true,  'defeated');
+  const dbg   = await app.dbgCounters();
+
+  const fired = def.size > 1 && canon.size === 1;
+  v.innerHTML =
+    `<div class="dim" style="margin-bottom:4px">overdense · unique chains of ${RUNS}</div>` +
+    `<div>canonical &nbsp;<span class="${canon.size === 1 ? 'ok' : 'no'}">${canon.size}</span></div>` +
+    `<div>defeated &nbsp;&nbsp;<span class="${def.size > 1 ? 'ok' : 'no'}">${def.size}</span></div>` +
+    (fired ? `<div class="ok" style="margin-top:4px">control fired: the order is what holds the chain.</div>`
+           : `<div class="no" style="margin-top:4px">control inconclusive — the scene is not contended enough.</div>`) +
+    `<div class="dim" style="margin-top:6px">nbr truncation dbg[6] = ${dbg[6].toLocaleString()}</div>` +
+    `<div class="hash" style="margin-top:4px">${[...canon][0].slice(0, 32)}…</div>`;
+});
+
+$('verifyBtn').addEventListener('click', verifyPool);
+$('controlBtn').addEventListener('click', verifyControl);
+
+// ------------------------------------------------------------------- loop
+let last = performance.now(), fps = 0, acc = 0, frames = 0;
+function loop(t) {
+  const dt = t - last; last = t;
+  acc += dt; frames++;
+  if (acc > 400) { fps = frames * 1000 / acc; acc = 0; frames = 0; }
+
+  app.resize();
+  if (app.running) { app.tick(); app.runSubsteps(CFG.substeps, false); }
+  app.render();
+
+  $('hud').innerHTML =
+    `<b>${app.count.toLocaleString()}</b> / ${app.nMax.toLocaleString()} particles<br>` +
+    `<b>${fps.toFixed(0)}</b> fps<br>` +
+    `<b>${app.substepCount.toLocaleString()}</b> substeps<br>` +
+    `<span class="dim">${CFG.GX*2}×${CFG.GY*2}×${CFG.GZ*2} wu · Q16.16</span>`;
+
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

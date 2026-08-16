@@ -426,6 +426,7 @@
   <div class="navLinks">
     <a href="#fig1">The Twins</a>
     <a href="#fig2">Smooth Rewind</a>
+    <a href="#fig3">3D</a>
     <a href="#uses">Uses</a>
     <a href="#how">How</a>
     <a class="gh" href="https://github.com/DARIENBATHALTER/sunaengine">GitHub</a>
@@ -593,6 +594,34 @@
 
 <hr class="rule">
 
+<!-- ================= FIG 3: 3D ================= -->
+<section class="figure" id="fig3">
+  <h2><span class="figno">Figure 3</span> — One Dimension Up</h2>
+  <div class="figintro">
+    <p>
+      The determinism technique is dimension-agnostic, and this is the
+      demonstration: a 3D particle fluid built on the same fixed-point
+      primitives, the same round-half-to-even arithmetic, the same
+      canonicalized neighbour ordering, one dimension up. The solver
+      contains no floats; float appears only in the renderer, which carries
+      no determinism obligation.
+    </p>
+    <p>
+      Honest scope: this is one material, no bonds, no thermal, no rigid
+      bodies. It is not SunaBox in 3D. The claim it supports is narrower
+      and still worth making: the method generalises.
+    </p>
+  </div>
+  <video src="assets/3d.mp4" poster="assets/3d-poster.jpg" muted loop autoplay playsinline
+    style="width:100%;max-width:56rem;border-radius:10px;display:block"></video>
+  <p style="margin-top:0.9rem">
+    <a href="3d/index.html"><strong>Open the live 3D demo</strong></a> — it simulates on
+    your GPU. Drag to orbit, scroll to zoom. WebGPU required.
+  </p>
+</section>
+
+<hr class="rule">
+
 <!-- ================= HOW ================= -->
 <section class="prose text" id="uses">
   <h2>What can you build with it?</h2>
@@ -622,9 +651,10 @@
     perfectly repeatable environments for AI experimentation and training.
     Large datasets can be regenerated from compact journals instead of
     being stored frame-by-frame.</p>
-  <p><strong>3D simulations and beyond:<br></strong>SunaEngine simulates in 2D
-    today, but the techniques used are dimension-agnostic, and the spec
-    documents them for reuse.</p>
+  <p><strong>3D simulations and beyond:<br></strong>The techniques are
+    dimension-agnostic, and the spec documents them for reuse. This is no
+    longer a promise: <a href="#fig3">Figure 3</a> runs the same method in
+    3D, live, in your browser.</p>
   <p><strong>SunaEngine isn't simply faster or prettier; it lets you build
     things that would otherwise be impossible.</strong></p>
 </section>
